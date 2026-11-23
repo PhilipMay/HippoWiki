@@ -8,16 +8,15 @@
     of the page parses it two to four times.
   - The replaced footnote tail rule is correct and linear for every input without nested definitions. Nested
     definitions leak unbalanced tokens, which also defeats the depth limit.
-- Findings: 9 in all, 0 Blocker, 1 Major, 4 Minor and 4 Nit (3 `issue:`, 1 `suggestion:`, 4 `nit:`, 1 `question:`).
-  Of the 8 Suggestions, 3 are High, 3 Medium and 2 Low.
+- Findings: 9 in all, 0 Blocker, 1 Major, 4 Minor and 4 Nit (4 `issue:`, 1 `suggestion:`, 4 `nit:`). Of the 9
+  Suggestions, 3 are High, 3 Medium and 3 Low.
 - To fix first: the footnote reference rule and its input of the cost test.
 - Not covered by this review: see "Not covered" at the end.
 
 ## Scope and method
 
-- The review answers the three questions of the last item of "Things to Check" in `roadmap.md`: how closely the
-  consumers depend on the tokens of markdown-it, the footnote rule that replaces the one of markdown-it-footnote, and
-  the parses that are repeated for the same content.
+- The review answers three questions: how closely the consumers depend on the tokens of markdown-it, the footnote rule
+  that replaces the one of markdown-it-footnote, and the parses that are repeated for the same content.
 - Reviewed: `src/features/pages/markdown.ts` and its consumers:
   - `components/markdownToReact.tsx`, `components/MarkdownContent.tsx`, `derive.ts`, `wiki-links.ts`, `schema.ts`,
     `forms.ts`, `links-service.ts` and the parse paths of `service.ts`
@@ -29,6 +28,14 @@
   `review-report.md` and `list-layout-review.md`.
 - Date: 2026-11-22. The code is the state of the branch `main` after the commit
   `add the ci times of the faster end-to-end tests`.
+- Rechecked: 2026-11-23, the state of `main` after the commit `wrap up the order of the wiki link rewrite`. Every
+  finding is still open:
+  - The Major again: 419 against 1,576 ms for 12,500 and 25,000 `[^` with a definition (26 and 42 ms without one).
+  - The quote and depth examples of the nested definitions, the parse of an unused definition and the image with a
+    footnote reference give the tokens and values the findings cite.
+  - The parse paths, the cited passages of the specs and the untyped footnote metas are unchanged.
+  - A rename leaves the link of an unused definition and of the earlier of two definitions with the same label as it
+    was, which `wiki-links.md` now contradicts (the issue on footnote definitions that are not shown).
 - Evidence comes from scratch scripts, not kept, that ran the functions of the repository with `npx tsx`: differences
   against the plugin over random inputs, the balance of the token stream, the depth limit, the rewrite of wiki links,
   and timings.
@@ -45,8 +52,11 @@
 - Location:
   - `node_modules/markdown-it-footnote/index.mjs`, `footnote_ref()`, used unchanged by `src/features/pages/markdown.ts`.
   - `src/test/slow-markdown.ts`, the input `"[^a]"`.
-  - `spec/pages.md`, "The cost of the Markdown parse" ("The parse is linear in the length of the content").
+  - `spec/pages.md`, "The cost of the Markdown parse" ("The parse is linear in the length of the content"), and
+    "Decisions", the items on the cost of the parse ("parses in time linear", "With a linear parse", "the parse is
+    linear on every input measured").
   - `spec/review-report.md`, the Reviewed item "The cost of the Markdown parse" ("parses in linear time").
+  - `spec/roadmap.md`, "Rights", the item "Public content" ("The Markdown parse is linear").
 - Severity: Major. Any Writer, in the browser or through MCP, can make every view of a page block the event loop of
   Node.js for many seconds. No data is lost.
 - Category: security, performance
@@ -96,7 +106,7 @@
     - `"[^ with a definition"`: `` `${repeated("[^")}`.slice(0, CONTENT_MAX_LENGTH - 10) + "\n\n[^a]: x" ``.
     - `"[^a] with a definition"`: about 25,000 references to one footnote. Its page view renders 50,000 links and
       took 926 ms, half the budget, and is not measured today.
-  - Correct "linear" in `pages.md` and in `review-report.md` once it is fixed.
+  - Correct "linear" in `pages.md`, `review-report.md` and `roadmap.md` once it is fixed.
 - Confidence: Medium. Measured and compared with the plugin. Still open: labels with `[` no longer resolve, which
   GitHub probably does not allow either but which was not checked there, and the fix relies on the private
   `__rules__`, as `tableRule` already does.
@@ -214,6 +224,36 @@
   - Replace "0.1 s" by a pointer to the budget of `markdown.cost.test.ts`.
 - Confidence: Medium. The wording depends on whether the suggestion above is taken.
 
+#### issue: the wiki links of footnote definitions that are not shown are not changed on a rename, although `wiki-links.md` says every link is
+
+- Location:
+  - `src/features/pages/markdown.ts`, `footnoteTail()`.
+  - `src/features/pages/wiki-links.ts`, `wikiLinksOf()` and `rewriteWikiLinks()`.
+  - `spec/wiki-links.md`, "Updates on a move or rename" ("every wiki link to it in the pages of the folder … is
+    changed", "inside a footnote definition included").
+- Severity: Minor
+- Category: correctness
+- Problem:
+  - A definition that no reference uses, and the earlier of two definitions with the same label, leave no tokens.
+    Their wiki links are not counted, indexed, shown as backlinks or rewritten on a rename.
+  - `wiki-links.md` says that every wiki link to the page is changed, inside a footnote definition included, and does
+    not except these definitions.
+- Impact: once the footnote is referenced later, or the later definition is removed, the link points to the old name
+  and shows as missing. The "Move or rename page" dialog does not count a page whose only link to the page stands
+  there.
+- Evidence:
+  - `"# T\n\n[^a]: unused [[x]]\n"` parses to `heading_open inline heading_close` only.
+  - A rename of `x` to `y` with `rewriteWikiLinks()` leaves `"# T\n\n[^a]: unused [[x]]\n"` unchanged, and changes
+    only the second link of `"# T\n\nText[^a]\n\n[^a]: first [[x]]\n\n[^a]: second [[x]]\n"`.
+- Suggestion (required): collect the wiki links of every definition before `footnoteTail()` drops its tokens, for
+  example in a list of the environment of the parse that `wikiLinksOf()` reads as well, so that the rewrite, the index
+  of links and the count of the limit see them. Add a unit test of `rewriteWikiLinks()` with the two inputs above.
+- Confidence: Low. It needs a decision between changing the code and narrowing the spec, and it changes what the index
+  of links and the limit of wiki links count.
+- Alternatives: narrow "Updates on a move or rename" in `wiki-links.md` to the links that the page view shows, and
+  name the unused and the overridden definitions as a current limit. No code change, but the links in them break on a
+  rename.
+
 #### nit: `pages.md` names `markdown.ts` for `SAFE_PROTOCOLS` and for the prefix of the footnote ids
 
 - Location: `spec/pages.md`, "Rendering", the items on safe addresses and on footnotes.
@@ -275,20 +315,6 @@
 - Suggestion (optional): accept it as a current limit in `pages.md`, or skip a `footnote_ref` inside the label of an
   image in the footnote reference rule of the Major finding.
 - Confidence: Low. It needs a decision on whether this is worth a rule, and the plugin behaves the same way.
-
-#### question: should the wiki links of footnote definitions that are not shown be indexed and updated on renames?
-
-- Location: `src/features/pages/markdown.ts`, `footnoteTail()`; `src/features/pages/wiki-links.ts`, `wikiLinksOf()`.
-- Severity: Minor
-- Category: correctness
-- Problem: a definition that no reference uses, and the earlier of two definitions with the same label, leave no
-  tokens. Their wiki links are not counted, indexed, shown as backlinks or rewritten on a rename.
-  `"# T\n\n[^a]: unused [[x]]\n"` parses to `heading_open inline heading_close` only.
-- Impact: once the footnote is referenced later, the link may point to an old name. `wiki-links.md` does not say
-  whether that is intended.
-- Evidence: the parse of the input above.
-- Suggestion (optional): either state in `wiki-links.md` that only the links that are shown count, or collect the
-  positions of the wiki links before `footnote_tail` drops tokens, for the rewrite only.
 
 ## Reviewed
 
