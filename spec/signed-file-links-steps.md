@@ -22,7 +22,7 @@ app: what the app may no longer read, its links no longer download. The plan is 
 ## Checklist
 
 - [x] Token and key of file links
-- [ ] Check of a grant without an access token
+- [x] Check of a grant without an access token
 - [ ] Download by link
 - [ ] The tool get_file_download_link
 - [ ] Spec tests

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { hashSecret } from "@/features/oauth/secret";
 import {
   authenticateAccessToken,
+  callerOfGrant,
   LAST_USE_INTERVAL_MS,
   listGrants,
   revokeAllGrants,
@@ -562,6 +563,112 @@ describe("authenticateAccessToken", () => {
       );
       expectNoSecretLogged();
     });
+  });
+});
+
+describe("callerOfGrant", () => {
+  it("gives null with OAuth off, without asking the database", async () => {
+    mocks.isOAuthOn.mockReturnValue(false);
+
+    await expect(callerOfGrant(GRANT_ID)).resolves.toBeNull();
+
+    expectDatabaseUntouched();
+    expect(mocks.folderRoleOf).not.toHaveBeenCalled();
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ reason: "oauth-off" }, "grant of a file link refused");
+  });
+
+  it("gives null for a malformed id, without asking the database", async () => {
+    await expect(callerOfGrant("not-a-grant")).resolves.toBeNull();
+
+    expectDatabaseUntouched();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({ reason: "malformed" }, "grant of a file link refused");
+  });
+
+  it("gives null for an unknown grant and logs the reason with the grant", async () => {
+    mocks.findUnique.mockResolvedValue(null);
+
+    await expect(callerOfGrant(GRANT_ID)).resolves.toBeNull();
+
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { reason: "unknown", grantId: GRANT_ID },
+      "grant of a file link refused",
+    );
+  });
+
+  it.each([
+    ["an expired grant", tokenWithUser({ expiresAt: new Date(NOW.getTime() - 1) }), "expired"],
+    ["a grant at the moment it expires", tokenWithUser({ expiresAt: NOW }), "expired"],
+    ["a user with the first password", tokenWithUser({ user: { mustChangePassword: true } }), "first-password"],
+    ["an admin", tokenWithUser({ user: { name: "maria", username: "maria", type: "admin" } }), "admin"],
+  ])("gives null for %s and logs the reason with the grant", async (_case, row, reason) => {
+    mocks.findUnique.mockResolvedValue(row);
+
+    await expect(callerOfGrant(GRANT_ID)).resolves.toBeNull();
+
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith({ reason, grantId: GRANT_ID }, "grant of a file link refused");
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["no role on the folder", null],
+    ["a role below the role of the grant", "reader"],
+  ])("gives null for a user with %s and logs the reason with the grant", async (_case, role) => {
+    mocks.folderRoleOf.mockResolvedValue(role);
+
+    await expect(callerOfGrant(GRANT_ID)).resolves.toBeNull();
+
+    expect(mocks.folderRoleOf).toHaveBeenCalledExactlyOnceWith(CALLER.actor, FOLDER_ID);
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { reason: "role-too-low", grantId: GRANT_ID, folderId: FOLDER_ID, grantRole: "writer", userRole: role },
+      "grant of a file link refused",
+    );
+  });
+
+  it("gives the caller of a valid grant, read by its id, and writes no last use", async () => {
+    await expect(callerOfGrant(GRANT_ID)).resolves.toStrictEqual(CALLER);
+
+    expect(mocks.findUnique).toHaveBeenCalledExactlyOnceWith({
+      where: { id: GRANT_ID },
+      select: expect.objectContaining({ id: true, expiresAt: true }) as unknown,
+    });
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expectNothingLogged();
+  });
+
+  it.each(["manager", "owner"])("accepts a user whose role %s includes the role of the grant", async (role) => {
+    mocks.folderRoleOf.mockResolvedValue(role);
+
+    await expect(callerOfGrant(GRANT_ID)).resolves.toStrictEqual(CALLER);
+  });
+
+  it("does not look at the access token of the grant, whose shorter lifetime a link may outlive", async () => {
+    mocks.findUnique.mockResolvedValue(tokenWithUser({ accessTokenExpiresAt: new Date(NOW.getTime() - HOUR_MS) }));
+
+    await expect(callerOfGrant(GRANT_ID)).resolves.toStrictEqual(CALLER);
+  });
+
+  it("gives null when the grant cannot be read, and logs the error", async () => {
+    const err = new Error("connection lost");
+    mocks.findUnique.mockRejectedValue(err);
+
+    await expect(callerOfGrant(GRANT_ID)).resolves.toBeNull();
+
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
+      { err, grantId: GRANT_ID },
+      "failed to look up the grant of a file link",
+    );
+  });
+
+  it("gives null when the role cannot be read, and logs the error", async () => {
+    const err = new Error("connection lost");
+    mocks.folderRoleOf.mockRejectedValue(err);
+
+    await expect(callerOfGrant(GRANT_ID)).resolves.toBeNull();
+
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith(
+      { err, grantId: GRANT_ID },
+      "failed to read the role of the user of the grant of a file link",
+    );
   });
 });
 

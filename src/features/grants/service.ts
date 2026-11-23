@@ -110,7 +110,7 @@ type RevokeGrantError = NotAllowed | GrantNotFound | Failed;
 type AuthenticateAccessTokenError = MissingToken | BadToken | RoleTooLow | Failed;
 
 /** Who a request through MCP acts for: the user of the grant, and the connection of the grant. */
-type McpCaller = { actor: Actor; connection: McpConnection };
+export type McpCaller = { actor: Actor; connection: McpConnection };
 
 /**
  * Revokes the actor's connected app with the given id: deletes its grant, which ends its access token and its refresh
@@ -220,27 +220,11 @@ export async function authenticateAccessToken(
   const secret = bearerTokenOf(headers);
   if (secret === null || !looksLikeAccessToken(secret)) return { ok: false, error: { code: "missing-token" } };
 
-  let grant: {
-    id: string;
-    folderId: string;
-    role: string;
-    expiresAt: Date;
-    accessTokenExpiresAt: Date | null;
-    lastUsedAt: Date | null;
-    user: { id: string; username: string; type: UserType; mustChangePassword: boolean };
-  } | null;
+  let grant: GrantToCheck | null;
   try {
     grant = await getDb().oAuthGrant.findUnique({
       where: { accessTokenHash: hashSecret(secret) },
-      select: {
-        id: true,
-        folderId: true,
-        role: true,
-        expiresAt: true,
-        accessTokenExpiresAt: true,
-        lastUsedAt: true,
-        user: { select: { id: true, username: true, type: true, mustChangePassword: true } },
-      },
+      select: GRANT_TO_CHECK_SELECT,
     });
   } catch (err) {
     logger.error({ err }, "failed to look up access token");
@@ -252,51 +236,18 @@ export async function authenticateAccessToken(
     return { ok: false, error: { code: "invalid-token" } };
   }
   const now = currentTime();
-  const grantId = grant.id;
-  if (grant.expiresAt.getTime() <= now.getTime()) {
-    logger.warn({ reason: "expired", grantId }, "access token refused");
-    return { ok: false, error: { code: "invalid-token" } };
-  }
-  // The access token ends long before its grant; the client then asks for a new one.
-  if ((grant.accessTokenExpiresAt?.getTime() ?? 0) <= now.getTime()) {
-    logger.warn({ reason: "access-token-expired", grantId }, "access token refused");
-    return { ok: false, error: { code: "invalid-token" } };
-  }
-  if (grant.user.mustChangePassword) {
-    logger.warn({ reason: "first-password", grantId }, "access token refused");
-    return { ok: false, error: { code: "invalid-token" } };
-  }
-  // Admins have no grants. The type of the account is checked as well, so that a grant of an admin is refused even if
-  // one existed: no admin acts through an access token, and no admin task is reachable with one.
-  if (isAdmin(grant.user)) {
-    logger.warn({ reason: "admin", grantId }, "access token refused");
-    return { ok: false, error: { code: "invalid-token" } };
-  }
-  // A connection is bound to the one address it was approved for: its token is no token anywhere else.
-  const grantRole = grant.role;
-  // The check constraint of the table keeps the role to Reader, Writer and Manager.
-  if (!isMcpRole(grantRole)) logger.error({ grantId, role: grantRole }, "grant with a role that is no role of MCP");
-  if (grant.folderId !== address.folderId || grantRole !== address.role || !isMcpRole(grantRole)) {
-    logger.warn({ reason: "other-address", grantId }, "access token refused");
-    return { ok: false, error: { code: "invalid-token" } };
-  }
-  const actor: Actor = { id: grant.user.id, name: grant.user.username, type: grant.user.type };
-  let userRole: Awaited<ReturnType<typeof folderRoleOf>>;
-  try {
-    // The current role, read on every request, so that a lowered or removed role takes effect at once.
-    userRole = await folderRoleOf(actor, grant.folderId);
-  } catch (err) {
-    logger.error({ err, grantId }, "failed to read the role of the user of an access token");
-    return { ok: false, error: { code: "failed" } };
-  }
-  if (!userRole || !includesRole(userRole, grantRole)) {
-    logger.warn(
-      { reason: "role-too-low", grantId, folderId: grant.folderId, grantRole, userRole },
-      "access token refused",
-    );
-    return { ok: false, error: { code: "role-too-low", userId: actor.id, grantId } };
+  const accepted = await acceptGrant(grant, now, {
+    address,
+    log: logger.warn.bind(logger),
+    refused: "access token refused",
+    subject: "an access token",
+  });
+  if (!accepted.ok) {
+    const { error } = accepted;
+    return { ok: false, error: error === "refused" ? { code: "invalid-token" } : error };
   }
 
+  const grantId = grant.id;
   const usedBefore = new Date(now.getTime() - LAST_USE_INTERVAL_MS);
   if (grant.lastUsedAt === null || grant.lastUsedAt.getTime() <= usedBefore.getTime()) {
     try {
@@ -310,5 +261,136 @@ export async function authenticateAccessToken(
     }
   }
 
+  return accepted;
+}
+
+/**
+ * Who a link to a file that names the grant with the given id acts for: the actor of the user of the grant and the
+ * connection of the grant, if the grant is still accepted at its MCP address, or `null`. A link follows the access of
+ * its connected app, so it passes the same checks as an access token of the grant: OAuth is on, the grant exists and
+ * has not expired, its user does not have the first password and is no admin, and the user's current role on the
+ * folder includes the role of the grant. It does not look at the access token, whose shorter lifetime a link may
+ * outlive, and it writes no last use: whoever holds a link may download, not only the app.
+ *
+ * A refusal and a failed read are logged with the reason and the grant; a link or its token never reaches this
+ * service.
+ */
+export async function callerOfGrant(id: string): Promise<McpCaller | null> {
+  if (!isOAuthOn()) {
+    logger.info({ reason: "oauth-off" }, "grant of a file link refused");
+    return null;
+  }
+  const grantId = parseGrantId(id);
+  if (!grantId) {
+    logger.warn({ reason: "malformed" }, "grant of a file link refused");
+    return null;
+  }
+
+  let grant: GrantToCheck | null;
+  try {
+    grant = await getDb().oAuthGrant.findUnique({ where: { id: grantId }, select: GRANT_TO_CHECK_SELECT });
+  } catch (err) {
+    logger.error({ err, grantId }, "failed to look up the grant of a file link");
+    return null;
+  }
+  if (!grant) {
+    logger.info({ reason: "unknown", grantId }, "grant of a file link refused");
+    return null;
+  }
+  // A link that no longer passes is expected, e.g. after the app was revoked, so its refusal is logged at `info`.
+  const accepted = await acceptGrant(grant, currentTime(), {
+    address: null,
+    log: logger.info.bind(logger),
+    refused: "grant of a file link refused",
+    subject: "the grant of a file link",
+  });
+  return accepted.ok ? accepted.value : null;
+}
+
+/** What the checks of a grant read of it, for an access token and for a link to a file. */
+type GrantToCheck = {
+  id: string;
+  folderId: string;
+  role: string;
+  expiresAt: Date;
+  accessTokenExpiresAt: Date | null;
+  lastUsedAt: Date | null;
+  user: { id: string; username: string; type: UserType; mustChangePassword: boolean };
+};
+
+/** The columns of a `GrantToCheck`. */
+const GRANT_TO_CHECK_SELECT = {
+  id: true,
+  folderId: true,
+  role: true,
+  expiresAt: true,
+  accessTokenExpiresAt: true,
+  lastUsedAt: true,
+  user: { select: { id: true, username: true, type: true, mustChangePassword: true } },
+} as const;
+
+/**
+ * The checks of a grant that an access token and a link to a file share, in one place, so that the two never disagree.
+ * With an MCP address, the access token of the grant is checked as well, and the grant must be one to exactly this
+ * address; without one, the grant counts at its own address. Each refusal is logged with the given function under the
+ * given message, with its reason and the grant: `refused` for a grant that is not accepted, `role-too-low` for a user whose role on the folder
+ * no longer includes the role of the grant, `failed` when the role could not be read.
+ */
+async function acceptGrant(
+  grant: GrantToCheck,
+  now: Date,
+  options: {
+    address: McpAddress | null;
+    log: (data: object, message: string) => void;
+    refused: string;
+    subject: string;
+  },
+): Promise<{ ok: true; value: McpCaller } | { ok: false; error: "refused" | RoleTooLow | Failed }> {
+  const { address, log, refused, subject } = options;
+  const grantId = grant.id;
+  if (grant.expiresAt.getTime() <= now.getTime()) {
+    log({ reason: "expired", grantId }, refused);
+    return { ok: false, error: "refused" };
+  }
+  // The access token ends long before its grant; the client then asks for a new one.
+  if (address !== null && (grant.accessTokenExpiresAt?.getTime() ?? 0) <= now.getTime()) {
+    log({ reason: "access-token-expired", grantId }, refused);
+    return { ok: false, error: "refused" };
+  }
+  if (grant.user.mustChangePassword) {
+    log({ reason: "first-password", grantId }, refused);
+    return { ok: false, error: "refused" };
+  }
+  // Admins have no grants. The type of the account is checked as well, so that a grant of an admin is refused even if
+  // one existed: no admin acts through an access token or a link, and no admin task is reachable with one.
+  if (isAdmin(grant.user)) {
+    log({ reason: "admin", grantId }, refused);
+    return { ok: false, error: "refused" };
+  }
+  const grantRole = grant.role;
+  // The check constraint of the table keeps the role to Reader, Writer and Manager.
+  if (!isMcpRole(grantRole)) {
+    logger.error({ grantId, role: grantRole }, "grant with a role that is no role of MCP");
+    log({ reason: "other-address", grantId }, refused);
+    return { ok: false, error: "refused" };
+  }
+  // A connection is bound to the one address it was approved for: its token is no token anywhere else.
+  if (address !== null && (grant.folderId !== address.folderId || grantRole !== address.role)) {
+    log({ reason: "other-address", grantId }, refused);
+    return { ok: false, error: "refused" };
+  }
+  const actor: Actor = { id: grant.user.id, name: grant.user.username, type: grant.user.type };
+  let userRole: Awaited<ReturnType<typeof folderRoleOf>>;
+  try {
+    // The current role, read on every request, so that a lowered or removed role takes effect at once.
+    userRole = await folderRoleOf(actor, grant.folderId);
+  } catch (err) {
+    logger.error({ err, grantId }, `failed to read the role of the user of ${subject}`);
+    return { ok: false, error: { code: "failed" } };
+  }
+  if (!userRole || !includesRole(userRole, grantRole)) {
+    log({ reason: "role-too-low", grantId, folderId: grant.folderId, grantRole, userRole }, refused);
+    return { ok: false, error: { code: "role-too-low", userId: actor.id, grantId } };
+  }
   return { ok: true, value: { actor, connection: { grantId, folderId: grant.folderId, role: grantRole } } };
 }

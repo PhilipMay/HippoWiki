@@ -341,6 +341,122 @@ describe("authenticateAccessToken", () => {
   });
 });
 
+describe("callerOfGrant", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A user with a role on a new folder and a grant at its address of the given role. */
+  async function connected(role: "reader" | "writer" | "manager" = "writer", userRole = role) {
+    const alice = await createActor();
+    const folder = await createFolder({ roles: [{ user: alice, role: userRole }] });
+    const { grant } = await createGrant({ owner: alice, folder, role });
+    return { alice, folder, grant };
+  }
+
+  it("accepts a valid grant with the actor and the connection of the grant", async () => {
+    const { alice, folder, grant } = await connected();
+
+    await expect(grantService.callerOfGrant(grant.id)).resolves.toStrictEqual({
+      actor: alice,
+      connection: { grantId: grant.id, folderId: folder.id, role: "writer" },
+    });
+  });
+
+  it("writes no last use", async () => {
+    const { grant } = await connected();
+
+    await grantService.callerOfGrant(grant.id);
+
+    expect((await getTestDb().oAuthGrant.findUniqueOrThrow({ where: { id: grant.id } })).lastUsedAt).toBeNull();
+  });
+
+  it("accepts a grant whose access token has ended, while the grant lasts", async () => {
+    const { grant } = await connected("reader");
+    vi.useFakeTimers({ now: (grant.accessTokenExpiresAt?.getTime() ?? 0) + 1, toFake: ["Date"] });
+
+    await expect(grantService.callerOfGrant(grant.id)).resolves.toMatchObject({ connection: { grantId: grant.id } });
+  });
+
+  it("refuses a grant once the app is revoked", async () => {
+    const { alice, grant } = await connected();
+    await grantService.revokeGrant(alice, grant.id);
+
+    await expect(grantService.callerOfGrant(grant.id)).resolves.toBeNull();
+  });
+
+  it("refuses a grant once all apps are revoked", async () => {
+    const { alice, grant } = await connected();
+    await grantService.revokeAllGrants(alice);
+
+    await expect(grantService.callerOfGrant(grant.id)).resolves.toBeNull();
+  });
+
+  it("refuses a grant once the user changed the own password and disconnected the apps", async () => {
+    const { alice, grant } = await connected();
+    const login = await authService.logIn({ name: alice.name, password: TEST_PASSWORD }, new Headers(), "shared");
+    if (!login.ok) return expect.fail(`login failed: ${login.error.code}`);
+    const cookies = login.value.headers.getSetCookie().map((cookie) => cookie.split(";")[0]);
+    const password = "my-new-password";
+
+    const changed = await authService.changeOwnPassword(
+      { currentPassword: TEST_PASSWORD, newPassword: password, repeatPassword: password },
+      new Headers({ cookie: cookies.join("; ") }),
+      "shared",
+      true,
+    );
+
+    expect(changed.ok).toBe(true);
+    await expect(grantService.callerOfGrant(grant.id)).resolves.toBeNull();
+  });
+
+  it("refuses a grant once its user is deleted", async () => {
+    const alice = await createActor();
+    // A folder without a role of the user: a role keeps a user from being deleted.
+    const { grant } = await createGrant({ owner: alice, folder: await createFolder({ roles: [] }) });
+
+    await getTestDb().user.delete({ where: { id: alice.id } });
+
+    await expect(grantService.callerOfGrant(grant.id)).resolves.toBeNull();
+  });
+
+  it("refuses a grant at the end of the grant", async () => {
+    const { grant } = await connected();
+    await expect(grantService.callerOfGrant(grant.id)).resolves.not.toBeNull();
+
+    vi.useFakeTimers({ now: grant.expiresAt.getTime(), toFake: ["Date"] });
+
+    await expect(grantService.callerOfGrant(grant.id)).resolves.toBeNull();
+  });
+
+  it("refuses a grant while the role on the folder is below the role of the grant or taken away, and accepts it again once it is high enough", async () => {
+    const { alice, folder, grant } = await connected("writer");
+    const where = { folderId_userId: { folderId: folder.id, userId: alice.id } };
+
+    await getTestDb().folderRole.update({ where, data: { role: "reader" } });
+    await expect(grantService.callerOfGrant(grant.id)).resolves.toBeNull();
+    await getTestDb().folderRole.delete({ where });
+    await expect(grantService.callerOfGrant(grant.id)).resolves.toBeNull();
+
+    await getTestDb().folderRole.create({ data: { folderId: folder.id, userId: alice.id, role: "owner" } });
+    await expect(grantService.callerOfGrant(grant.id)).resolves.not.toBeNull();
+  });
+
+  it("refuses the grant of a user who still has the first password", async () => {
+    const { alice, grant } = await connected();
+    await getTestDb().user.update({ where: { id: alice.id }, data: { mustChangePassword: true } });
+
+    await expect(grantService.callerOfGrant(grant.id)).resolves.toBeNull();
+  });
+
+  it("refuses a grant of an admin", async () => {
+    const maria = await createUser({ name: "maria", type: "admin", mustChangePassword: false });
+    const { grant } = await createGrant({ owner: maria });
+
+    await expect(grantService.callerOfGrant(grant.id)).resolves.toBeNull();
+  });
+});
+
 describe("an admin", () => {
   it("has no list of apps and cannot revoke a grant", async () => {
     const maria = await createUser({ name: "maria", type: "admin", mustChangePassword: false });

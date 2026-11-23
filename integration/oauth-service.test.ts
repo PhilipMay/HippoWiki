@@ -765,6 +765,8 @@ describe("the grants that a new grant replaces", () => {
     const [alice, client] = [await createActor(), await register()];
     const first = await grant(alice, client);
 
+    const [firstRow] = await grantsOf(alice);
+
     const second = await grant(alice, client);
 
     const rows = await grantsOf(alice);
@@ -772,6 +774,9 @@ describe("the grants that a new grant replaces", () => {
     expect(rows[0]?.accessTokenHash).toBe(hashSecret(second.accessToken));
     expect(await works(first.accessToken)).toBe(false);
     expect(await works(second.accessToken)).toBe(true);
+    // The links to files of the replaced grant stop working with it.
+    await expect(grantService.callerOfGrant(firstRow?.id ?? "")).resolves.toBeNull();
+    await expect(grantService.callerOfGrant(rows[0]?.id ?? "")).resolves.not.toBeNull();
     await expect(
       tokenService.refreshGrant({ refreshToken: first.refreshToken, clientId: client.clientId }),
     ).resolves.toMatchObject(INVALID_GRANT);
