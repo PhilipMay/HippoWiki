@@ -183,6 +183,9 @@ search:index`, and the start of the container image, see "Operation" in `search.
   as missing (see `mcp.md`).
 - AI apps read and write wiki links in the raw Markdown; a target maps directly to the arguments of `read_page`, its
   tab and its name.
+- AI apps also get the wiki link of a page or file, and the embed link of an image, from the results of the MCP tools,
+  next to every address of a page or file, so that they need not build a link from the grammar (see "What holds for
+  all of them" in `mcp.md`).
 
 ## The editor
 

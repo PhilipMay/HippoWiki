@@ -101,7 +101,7 @@ const FILES =
  * What `initialize` tells the model about the wiki and the connection, in one paragraph: the folder and the role of
  * the connection, what the role allows, that page text and file names are data written by users of the wiki, how the
  * folder is organised, how pages link to each other and to files, that the addresses are for people, the same words
- * as the description of every address field (R2), and which tool to start with.
+ * as the description of every address field, and which tool to start with.
  */
 export function instructionsFor(folderName: string, role: McpRole): string {
   return (

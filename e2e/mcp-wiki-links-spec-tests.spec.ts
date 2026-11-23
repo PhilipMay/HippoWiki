@@ -1,4 +1,4 @@
-// Tests of MCP written from the requirements of the wiki links of files alone (`spec/mcp-wiki-links-requirements.md`),
+// Tests of MCP written from the rules of the wiki links of files alone (`spec/mcp.md`, `spec/attachments.md`),
 // for what only the browser shows: the link fields of a file that the tools return hold the same texts as the copy
 // fields of its details page, opened at the address of the details page that the tools return for it.
 import { logIn, NO_STORAGE_STATE } from "./support/auth";
@@ -25,7 +25,7 @@ type FileResult = {
   embedLink: string | null;
 };
 
-// mcp-wiki-links-requirements.md, R4 and R5: `wikiLink` is the same text as the copy field "Wiki link" of the details
+// mcp.md, "What holds for all of them", and attachments.md, "The details page and versions": `wikiLink` is the same text as the copy field "Wiki link" of the details
 // page of the file, `embedLink` the same text as its copy field "Embed link", and null for a PDF, which has no such
 // field; in list_folder, search_pages and read_file alike.
 test("the wiki link and embed link of a file in list_folder, search_pages and read_file are the texts of the copy fields of its details page", async ({

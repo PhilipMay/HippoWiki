@@ -209,7 +209,9 @@ A client that cannot connect through OAuth cannot use the MCP server. A Reader c
 its folder, searches its pages and reads them; a Writer connection also creates pages, changes parts of their content by exact
 search-and-replace, replaces their whole content and moves or renames them;
 a Manager connection also deletes pages and creates, renames and deletes tabs. Deleted pages are restored only in the
-browser (`spec/mcp.md`). Every request carries one call (batches are refused), has a body limit of 1 MiB, and counts
+browser (`spec/mcp.md`). The tools return, next to the address of each page and file, the wiki link a page uses for
+it and the embed link of an image; the addresses are for people and open only in a browser after a login, so an app
+gives them to its user instead of fetching them. Every request carries one call (batches are refused), has a body limit of 1 MiB, and counts
 against a budget per user of 60 requests at once and 300 a minute; an operator changes these limits, within bounds, with
 `HIPPOWIKI_MCP_BODY_LIMIT`, `HIPPOWIKI_MCP_RATE_BURST` and `HIPPOWIKI_MCP_RATE_PER_MINUTE` (`spec/container-image.md`).
 

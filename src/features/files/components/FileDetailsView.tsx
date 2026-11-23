@@ -43,7 +43,7 @@ const PREVIEW_MAX_WIDTH = "100%";
  * The texts to copy into a page, as pairs of label and value in the order of the page: for an image the embed
  * `![[…]]`, which shows it, then the wiki link `[[…]]`, which only links it; for a PDF only the wiki link. The target
  * is the name and, for a file in a tab, the tab before it, as the wiki links of the folder name it. The texts come
- * from the same helpers as the links of a file in the results of the MCP tools, so that both give the same (R4, R5).
+ * from the same helpers as the links of a file in the results of the MCP tools, so that both give the same.
  */
 function copyFieldsOf(file: FileWithPlace): [string, string][] {
   const target = { tab: file.tab?.name ?? null, name: file.name };

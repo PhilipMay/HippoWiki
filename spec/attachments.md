@@ -129,7 +129,9 @@ Tests:
 - The copy fields hold the texts a page uses for the file: for an image "Embed link" with `![[…]]`, which shows it,
   then "Wiki link" with `[[…]]`, which only links it; for a PDF only "Wiki link" with `[[…]]`. Each field has a copy
   button of its own. The target names the file as the wiki links of the folder name it: its name with its extension,
-  with the tab and a `/` before it for a file in a tab. The view of a deleted file shows no copy field.
+  with the tab and a `/` before it for a file in a tab. The view of a deleted file shows no copy field. The texts come
+  from `wikiLinkOf()` and `embedLinkOf()` of `src/features/pages/wiki-link-target.ts`, which build the links of files
+  in the results of the MCP tools as well, so that both give the same texts.
 - It lists the versions, newest first, each with its number, who stored it, how, when and its size, and opens each one.
 - A Writer, a Manager and an Owner store a new version with "Upload new version", which takes a file of the same type,
   and revert to an earlier version, which stores that version again as the newest one with the actor as its uploader.
@@ -171,8 +173,8 @@ Tests:
 ## MCP
 
 - Every connection lists the files of its folder with `list_folder` and reads the details of one with `read_file`:
-  its name and place, type, size, the width and height of an image, its last change, its addresses and the pages that
-  show or link it. No tool returns the content of a file, and no connection reaches the files of another folder.
+  its name and place, type, size, the width and height of an image, its last change, its addresses, its wiki link and,
+  for an image, its embed link, the texts of the copy fields of its details page, and the pages that show or link it. No tool returns the content of a file, and no connection reaches the files of another folder.
 - No tool uploads, changes, moves, renames or deletes a single file. The one tool after which a file is deleted is
   `delete_tab` of a Manager connection, together with its tab (see "Tools" in `mcp.md`).
 

@@ -1,5 +1,5 @@
-// Tests of the MCP tools written from the requirements of the hint on the addresses and the wiki links of pages and
-// files alone (`spec/mcp-wiki-links-requirements.md`), against the real services and the test database: every tool of a
+// Tests of the MCP tools written from the rules of the hint on the addresses and the wiki links of pages and files
+// alone (`spec/mcp.md`, "What holds for all of them"), against the real services and the test database: every tool of a
 // Manager connection is called, every address in its results is looked up in its output schema, and the links the
 // tools return are put into pages to show that they link what they name.
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
@@ -14,7 +14,7 @@ import { mcpActorOf, owners } from "./helpers";
 
 const PUBLIC_URL = "https://wiki.example.com";
 
-/** The hint of R1, word for word. */
+/** The hint on the addresses, word for word. */
 const HINT =
   "Addresses are for people: each opens only in a browser after logging in to the wiki, so an AI app cannot fetch it " +
   "with its access token. To point to a page or file in a page, use its wiki link.";
@@ -190,7 +190,7 @@ function filePlace(address: string): string | null {
 }
 
 describe("the hint on the addresses", () => {
-  // mcp-wiki-links-requirements.md, R1: every address that a tool returns says in the description of its field, after
+  // mcp.md, "What holds for all of them": every address that a tool returns says in the description of its field, after
   // what it says of its item, that it is for people, with the text of the acceptance word for word.
   it("ends the description of the field of every address that any tool returns with the hint, after what it says of its item", async () => {
     const schemas = await outputSchemas();
@@ -224,7 +224,7 @@ describe("the hint on the addresses", () => {
     );
   });
 
-  // mcp-wiki-links-requirements.md, R1: the addresses of tabs, the folder and the deleted items get the hint and no
+  // mcp.md, "What holds for all of them": the addresses of tabs, the folder and the deleted items get the hint and no
   // link field, because a page cannot link them.
   it("gives no link field to an item whose only address is that of the folder, a tab or the deleted items", async () => {
     const results = await callEveryTool();
@@ -249,7 +249,7 @@ describe("the hint on the addresses", () => {
 });
 
 describe("the wiki link of a page", () => {
-  // mcp-wiki-links-requirements.md, R3: every result that returns the address of a page also returns its wiki link,
+  // mcp.md, "What holds for all of them": every result that returns the address of a page also returns its wiki link,
   // [[name]] or [[tab/name]], without a label, and no embedLink.
   it("is returned next to every address of a page that any tool returns, as [[name]] or [[tab/name]] of that address, without an embed link", async () => {
     const results = await callEveryTool();
@@ -273,7 +273,7 @@ describe("the wiki link of a page", () => {
     expect(checked).toBeGreaterThanOrEqual(11);
   });
 
-  // mcp-wiki-links-requirements.md, R3: the link names the page as stored, after a move or rename its new tab and name;
+  // mcp.md, "What holds for all of them": the link names the page as stored, after a move or rename its new tab and name;
   // a rename of its tab is such a change as well.
   it("names the page as stored in every read tool after its tab is renamed and after it is moved out of the tab", async () => {
     const guides = await createTab({ folder: handbook, name: "guides", editor: user });
@@ -302,8 +302,8 @@ describe("the wiki link of a page", () => {
     expect((await call("read_page", { page: "setup" })).wikiLink).toBe("[[setup]]");
   });
 
-  // mcp-wiki-links-requirements.md, "Scenarios": an AI app creates a page and then links it from an overview page with
-  // the wiki link that create_page returned. R3: the field holds the wiki link that a page uses for the page.
+  // mcp.md, "What holds for all of them": an AI app creates a page and then links it from an overview page with the
+  // wiki link that create_page returned; the field holds the wiki link that a page uses for the page.
   it.each([
     ["in a tab", "guides"],
     ["placed directly in the folder", null],
@@ -321,7 +321,7 @@ describe("the wiki link of a page", () => {
 });
 
 describe("the links of a file", () => {
-  // mcp-wiki-links-requirements.md, R4: every result that returns the address of a file also returns its wiki link,
+  // mcp.md, "What holds for all of them": every result that returns the address of a file also returns its wiki link,
   // [[name.ext]] or [[tab/name.ext]], without a label.
   it("returns the wiki link next to every address of the details page of a file that any tool returns, as [[name.ext]] or [[tab/name.ext]]", async () => {
     const results = await callEveryTool();
@@ -343,7 +343,7 @@ describe("the links of a file", () => {
     expect(checked).toBeGreaterThanOrEqual(6);
   });
 
-  // mcp-wiki-links-requirements.md, R5: the same results return the embed link of an image, ![[name.ext]] or
+  // mcp.md, "What holds for all of them": the same results return the embed link of an image, ![[name.ext]] or
   // ![[tab/name.ext]], and null for a PDF, so that every file has the same fields.
   it("returns the embed link of an image and null for a PDF next to every address of the details page of a file that any tool returns", async () => {
     const results = await callEveryTool();
@@ -371,8 +371,8 @@ describe("the links of a file", () => {
     expect(pdfs).toBeGreaterThanOrEqual(3);
   });
 
-  // mcp-wiki-links-requirements.md, "Scenarios": the AI app finds an image with list_folder and puts its embed link
-  // into the content of a new page, and finds a PDF with search_pages. R4, R5: the fields hold the texts that a page
+  // mcp.md, "What holds for all of them": the AI app finds an image with list_folder and puts its embed link into the
+  // content of a new page, and finds a PDF with search_pages; the fields hold the texts that a page
   // uses for the file.
   it("from list_folder and search_pages, put into a page, show or link the file from that page", async () => {
     const diagrams = await createTab({ folder: handbook, name: "diagrams", editor: user });
@@ -398,7 +398,7 @@ describe("the links of a file", () => {
 });
 
 describe("the lists without an address", () => {
-  // mcp-wiki-links-requirements.md, "Scope": no link fields in linkedFrom of read_page, shownOrLinkedFrom of
+  // mcp.md, "Current limits": no link fields in linkedFrom of read_page, shownOrLinkedFrom of
   // read_file, updatedPages of move_or_rename_page and rename_tab, and the pages and files of delete_tab.
   it("keep their items without wikiLink and embedLink", async () => {
     const guides = await createTab({ folder: handbook, name: "guides", editor: user });

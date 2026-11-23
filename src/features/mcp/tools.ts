@@ -222,7 +222,7 @@ function fileData(options: WikiToolsOptions, file: fileService.FolderFile): z.in
     address: addressOf(options, fileContentPath(folder.name, tab, file.name)),
     detailsAddress: addressOf(options, filePath(folder.name, tab, file.name)),
     wikiLink: wikiLinkOf({ tab, name: file.name }),
-    // Only an image can be shown in a page; a PDF has the field as null, so that every file has the same fields (R5).
+    // Only an image can be shown in a page; a PDF has the field as null, so that every file has the same fields.
     embedLink: isImageType(file.type) ? embedLinkOf({ tab, name: file.name }) : null,
     lastChanged: file.updatedAt.toISOString(),
     lastEditedBy: file.lastEditedBy.name,
@@ -523,7 +523,7 @@ function storedPageData(options: WikiToolsOptions, stored: pageService.StoredPag
     title: stored.title,
     tab,
     address: addressOf(options, pagePath(options.folder.name, tab, stored.name)),
-    // The tab and name as stored, so that after a move or rename the link names the new place (R3).
+    // The tab and name as stored, so that after a move or rename the link names the new place.
     wikiLink: wikiLinkOf({ tab, name: stored.name }),
     version: stored.version,
   });

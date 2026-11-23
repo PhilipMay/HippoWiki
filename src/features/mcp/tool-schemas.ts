@@ -34,8 +34,9 @@ export const USER_TEXT_NOTE =
 /**
  * What the model is told about every address a tool returns: it is for people, because it opens only in a browser
  * after a login, and the access token of a connection works only for MCP. The description of every address field ends
- * with it (R1), and the instructions of every connection state it once (R2), so that an AI app gives an address to its
- * user instead of fetching it, and points to a page or file in a page with its wiki link.
+ * with it, and the instructions of every connection state it once, so that an AI app gives an address to its user
+ * instead of fetching it, and points to a page or file in a page with its wiki link (see "What holds for all of them"
+ * in `spec/mcp.md`).
  */
 export const ADDRESS_HINT =
   "Addresses are for people: each opens only in a browser after logging in to the wiki, so an AI app cannot fetch " +
@@ -217,7 +218,7 @@ const pageTabOutput = (verb: "is" | "was") =>
   z.string().nullable().describe(`The tab the page ${verb} in, or null for a page placed directly in the folder`);
 
 /**
- * The wiki link of a page, as every result that gives the address of a page gives it next to it (R3). It carries no
+ * The wiki link of a page, as every result that gives the address of a page gives it next to it. It carries no
  * label, not the title either, so that it stays right when the title changes; a page has no embed link.
  */
 const PAGE_WIKI_LINK_OUTPUT = z
@@ -262,7 +263,7 @@ export const fileOutput = z.object({
   detailsAddress: z
     .string()
     .describe(addressDescription("Where a person opens the details page of the file, with its versions")),
-  // The same texts as the copy fields "Wiki link" and "Embed link" of the details page of the file (R4, R5).
+  // The same texts as the copy fields "Wiki link" and "Embed link" of the details page of the file.
   wikiLink: z
     .string()
     .describe(
@@ -283,7 +284,7 @@ export const fileOutput = z.object({
 
 export const listFolderOutput = z.object({
   note: NOTE_OUTPUT,
-  // The folder and the tabs get the hint but no link field, because a page cannot link them (R1).
+  // The folder and the tabs get the hint but no link field, because a page cannot link them.
   folder: z.object({ name: z.string(), address: addressOutput("folder") }),
   tabs: z.array(
     z.object({

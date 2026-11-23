@@ -22,6 +22,9 @@ and the unit tests next to the code,
 `src/features/mcp/tools.test.ts`, `src/features/mcp/edits.test.ts`, `src/features/mcp/http.test.ts`,
 `src/features/mcp/rate-limit.test.ts` and `src/features/mcp/queries.test.ts`, the tests of the limits written from the
 spec alone, `src/features/mcp/limits.spec-tests.test.ts`, and the cost test `src/features/mcp/edits.cost.test.ts`.
+The tests of the wiki links and the hint on the addresses written from the spec alone are
+`integration/mcp-wiki-links.spec-tests.test.ts` and `e2e/mcp-wiki-links-spec-tests.spec.ts`; the links are built by
+`wikiLinkOf()` and `embedLinkOf()` of `src/features/pages/wiki-link-target.ts`.
 
 ## The addresses
 
@@ -132,30 +135,31 @@ Read tools, which say so to the client (`readOnlyHint`):
 
 - `list_folder`: the tabs, the pages and the files of the folder of the connection, without arguments. The pages
   placed directly in the folder come first, then the pages in tabs, tab by tab; each page has its name, its title, its
-  tab (none for a page placed directly in the folder), its address and its last change. The files, images and PDFs
-  that are not deleted, follow in the same order; each has its name with its extension, its tab, its type, the size,
-  width and height of its current version (none for a PDF), the full URL of the file itself and of its details page,
-  and its last change. Every tab, page and file also comes with its last editor and how it was last changed (`web` or
+  tab (none for a page placed directly in the folder), its address, its wiki link (`wikiLink`) and its last change. The
+  files, images and PDFs that are not deleted, follow in the same order; each has its name with its extension, its
+  tab, its type, the size, width and height of its current version (none for a PDF), the full URL of the file itself
+  and of its details page, its wiki link (`wikiLink`), its embed link (`embedLink`, null for a PDF) and its last
+  change. Every tab, page and file also comes with its last editor and how it was last changed (`web` or
   `mcp`, see "Last editor" in `content-structure.md`), so that an agent sees which pages an AI app changed last
   without reading each one.
 - `read_page`: one page of the folder by its tab, if it is in one, and its name: the title, the Markdown content, the
-  address, the last change, the last editor, how it was last changed (`web` or `mcp`), its version (see
+  address, the wiki link, the last change, the last editor, how it was last changed (`web` or `mcp`), its version (see
   `optimistic-locking.md`), and the other pages of the folder that link to it, with their name, tab and title, as the
   section "Linked from" of the page view lists them (see "Backlinks" in `wiki-links.md`).
 - `read_file`: one file of the folder by its tab, if it is in one, and its name with its extension: the details of
-  `list_folder`, the number of its versions, and the pages of the folder that show or link it, with their name, tab
+  `list_folder`, its wiki link and embed link included, the number of its versions, and the pages of the folder that show or link it, with their name, tab
   and title, as the section "Shown or linked from" of its details page lists them. A file that does not exist, also a
   deleted one, is a tool error that points to `list_folder`.
 - No tool returns the content of a file, as bytes, as an image or as text, and no tool uploads, changes, moves, renames
   or deletes a single file: that is done only in the browser. The one tool after which a file is deleted is
   `delete_tab` of a Manager connection, which deletes the files of the tab together with its pages.
 - `search_pages`: the pages of the whole folder that match the words of `query`, the best match first, each with its
-  title, its name and tab as `read_page` takes them, its address, a piece of its text, its last change, its last
+  title, its name and tab as `read_page` takes them, its address, its wiki link, a piece of its text, its last change, its last
   editor and how it was last changed. It returns 10 results unless `limit` asks for another number, at most 25, from
   `offset` on, up to the 100 best results, and gives the offset of the next results. Its first call, with `offset` 0,
   also lists in `files` the images and PDFs whose names match, the same files as the browser finds, each with its
-  name and tab, its type, size, width and height, the addresses of the file and of its details page and its last
-  change, and never the content of a file. It takes no folder and no tab, and never finds a deleted page or file. Its
+  name and tab, its type, size, width and height, the addresses of the file and of its details page, its wiki link
+  and embed link and its last change, and never the content of a file. It takes no folder and no tab, and never finds a deleted page or file. Its
   syntax, its limits and its tool errors are those of search in the browser (see "Search through MCP" in
   `search.md`).
 
@@ -248,10 +252,21 @@ What holds for all of them:
   length limit of a name with the longest extension) and the outcome: worked, a tool error, or failed. It never holds the content, a title, a
   text of a replacement, an address, a version or the words of a search. Requests that reach no tool are not logged there: `initialize`, the
   list of tools, and calls that the SDK refuses before the tool runs, such as an unknown tool or invalid arguments.
-- Every write tool of pages returns the page as stored: its name, title, tab, address and version, which a change
-  counts up and a content save without a change and a move to the current name and place keep.
+- Every write tool of pages returns the page as stored: its name, title, tab, address, wiki link and version, which a
+  change counts up and a content save without a change and a move to the current name and place keep. The wiki link
+  names the page as stored, after a move or rename its new tab and name.
 - An address is the full URL of the folder, tab, page or file, which a person can open; the address of a file itself
-  answers only a logged-in user with a role on its folder (see `attachments.md`).
+  answers only a logged-in user with a role on its folder (see `attachments.md`). The description of every address
+  field of every output schema, of the folder, tabs, pages, files, the details pages of files and the deleted items,
+  ends, after what it says of its item, with the same hint (`ADDRESS_HINT` in `src/features/mcp/tool-schemas.ts`):
+  "Addresses are for people: each opens only in a browser after logging in to the wiki, so an AI app cannot fetch it
+  with its access token. To point to a page or file in a page, use its wiki link."
+- Next to every address of a page that a tool returns stands its wiki link in `wikiLink`, `[[name]]` for a page placed
+  directly in the folder or `[[tab/name]]` for a page in a tab; a page has no embed link. Next to every address of a
+  file stand its wiki link in `wikiLink`, `[[name.ext]]` or `[[tab/name.ext]]`, and in `embedLink` the embed of an
+  image, `![[name.ext]]` or `![[tab/name.ext]]`, or null for a PDF. The links carry no label, not the title either,
+  and the links of a file are the texts of the copy fields of its details page (see `attachments.md`). The folder, the
+  tabs and the deleted items have an address but no link field, because a page cannot link them.
 - The name of an existing tab or page is a plain string in the input of every tool. A name that no item has, one that
   breaks the name rule or has spaces around it included, gets the not-found error of the tool, which points to
   `list_folder`; the input schema refuses none of them. The reason: the MCP specification asks for errors of input
@@ -274,7 +289,8 @@ What holds for all of them:
   state the grammar of files: the types and their extensions, `[[name.ext]]` and `[[tab/name.ext]]` to link a file,
   `![[name.ext]]` and `![[tab/name.ext]]` to show an image, each with an optional label, that the read tools give the
   details of files but never their content, and that a single file is uploaded, changed, moved, renamed or deleted
-  only in the browser.
+  only in the browser. The instructions of every role state, after the grammar of files, the hint of every address
+  field, in the same words.
 
 ## Changing parts of a page
 
@@ -509,6 +525,22 @@ of the history.
   Rejected: a tool error for the model, which would need another rule for requests that are no tool call.
 - Refusals by the rate limit are logged once per user and minute, with a count, so that an agent in a loop cannot fill
   the log. Rejected: a line per refused request.
+- The addresses of the tools are for people, and say so in the description of every address field and once in the
+  instructions of every connection, so that a client sees it when it connects and in the schema of every result, and
+  an AI app gives an address to its user instead of trying to fetch it. Rejected: the field descriptions alone; a
+  `note` in every result, which adds text to every answer.
+- The hint says that an address is for people and opens only after a login in a browser, and points to the wiki
+  link. Rejected: a shorter text without the pointer to the wiki link; a softer "can most likely not fetch it".
+- The tabs, the folder and the deleted items get the hint but no link field, because a page cannot link them.
+  Rejected: leaving their address fields as they are.
+- The link fields are named `wikiLink` and `embedLink`, after the copy fields "Wiki link" and "Embed link" of the
+  details page of a file; `embedLink` of a PDF is null, so that every file has the same fields. Rejected: leaving
+  `embedLink` out for a PDF; one list `links` per item, which the client would have to tell apart.
+- The links carry no label, like the copy fields of the details page. Rejected: the title as the label of a page,
+  which puts text written by users into the field and goes stale when the title changes.
+- Link fields stand only where a tool returns an address, `list_folder` included, whose results grow by a few short
+  fields per item. Rejected: `wikiLink` in `linkedFrom`, `shownOrLinkedFrom` and `updatedPages` as well; leaving the
+  link fields out of `list_folder`.
 - The rate limit cannot be switched off: a reverse proxy can limit more strictly in front of it, but the wiki keeps its
   own ceiling. Rejected: `0` to switch it off.
 
@@ -531,3 +563,7 @@ of the history.
 - no limit for requests without a valid token, which is left to the reverse proxy
 - no CORS: a client that runs in a browser on another origin cannot call an MCP address
 - no tool that lists the accounts
+- no link fields in the lists of pages and files that have no address: `linkedFrom` of `read_page`,
+  `shownOrLinkedFrom` of `read_file`, `updatedPages` of `move_or_rename_page` and `rename_tab`, and the pages and
+  files of `delete_tab` keep the fields they have, from which the grammar in the instructions builds the link
+- no link that works without a login: the addresses open only in a browser after a login
