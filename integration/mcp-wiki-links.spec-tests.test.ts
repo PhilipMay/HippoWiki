@@ -109,6 +109,7 @@ async function callEveryTool(): Promise<[string, Record<string, unknown>][]> {
   await record("read_file", { tab: "guides", file: "diagram.png" });
   await record("read_file", { file: "manual.pdf" });
   await record("get_file_download_link", { tab: "guides", file: "diagram.png" });
+  await record("get_file_upload_link", { tab: "guides", file: "screenshot.png", size: 100 });
   await record("search_pages", { query: "install" });
   await record("search_pages", { query: "overview" });
   await record("search_pages", { query: "diagram" });
@@ -206,6 +207,9 @@ describe("the hint on the addresses", () => {
         // The link of get_file_download_link is no address for people: it downloads the file without a login until it
         // expires ("The tool" in signed-file-links.md), so it does not say that it opens only after a login.
         if (tool === "get_file_download_link" && path.at(-1) === "downloadLink") continue;
+        // The same holds for the link of get_file_upload_link, which stores one upload without a login until it
+        // expires.
+        if (tool === "get_file_upload_link" && path.at(-1) === "uploadLink") continue;
         seen.add(value);
         const description = schemaAt(schemas.get(tool), path)?.description ?? "";
         const where = `${tool}: ${path.join(".")}`;
@@ -243,6 +247,8 @@ describe("the hint on the addresses", () => {
         if (addresses.length === 0) continue;
         if (addresses.some((address) => pagePlace(address) !== null || filePlace(address) !== null)) continue;
         if (addresses.some((address) => address.startsWith(`${PUBLIC_URL}/files/`))) continue;
+        // The upload link of get_file_upload_link is for the file it stores, which the wiki link names.
+        if (addresses.some((address) => address.startsWith(`${PUBLIC_URL}/api/uploads/`))) continue;
         checked += 1;
         expect(holder, `${tool}: ${addresses.join(", ")}`).not.toHaveProperty("wikiLink");
         expect(holder, `${tool}: ${addresses.join(", ")}`).not.toHaveProperty("embedLink");

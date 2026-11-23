@@ -18,6 +18,8 @@ import {
   editedPageOutput,
   editPageContentInput,
   fileDownloadLinkOutput,
+  fileUploadLinkInput,
+  fileUploadLinkOutput,
   listFolderOutput,
   moveOrRenamePageInput,
   NAME_RULE,
@@ -42,6 +44,7 @@ import {
   deleteTab,
   editPageContent,
   getFileDownloadLink,
+  getFileUploadLink,
   listFolder,
   moveOrRenamePage,
   readFile,
@@ -90,15 +93,34 @@ const WIKI_LINKS =
   "the page. The target comes first and is the name of the page, as read_page takes it, never its title, and has no " +
   ".md. A link to a page that does not exist is allowed and shown as missing.";
 
-/** The files of a folder and their grammar in pages, as the instructions tell the model. */
+/** The files of a folder and their grammar in pages, as the instructions of every connection tell the model. */
 const FILES =
   "The folder also holds files, images (PNG, JPEG, GIF, WebP) and PDFs, directly or in tabs, each named like a page " +
   `followed by the extension of its type: ${FILE_EXTENSIONS.join(", ")}, such as diagram.png. A page links a file ` +
   "with [[name.ext]] or [[tab/name.ext]] and shows an image with ![[name.ext]] or ![[tab/name.ext]], each with an " +
   "optional |label. list_folder and read_file give the details of files and search_pages finds them by their names, " +
   "but no tool returns the content of a file. get_file_download_link gives a link that downloads one file for a few " +
-  "minutes; never write such a link into a page, because it expires and lets anyone who reads it download the file. " +
-  "A single file is uploaded, changed, moved, renamed or deleted only in the browser.";
+  "minutes; never write such a link into a page, because it expires and lets anyone who reads it download the file.";
+
+/**
+ * How a connection that may upload files does it, as the instructions tell the model: with a link of
+ * `get_file_upload_link`, sent with `curl`, and then an embed or a wiki link in a page.
+ */
+const UPLOADS =
+  "To upload an image or PDF from a local file, as a new file or as a new version of a file, call " +
+  "get_file_upload_link with its name, tab and exact size in bytes, and for a new version the lockVersion that " +
+  "read_file or list_folder gave for the file; then send the file to the link with the curlCommand of the result, " +
+  "the path of the file in place of its placeholder, and add the file to a page with the embedLink or wikiLink of " +
+  "the result, such as with edit_page_content. Never write an upload link into a page, because it lets anyone who " +
+  "reads it upload into the folder until it expires.";
+
+/** What stays in the browser for every connection. */
+const FILES_IN_BROWSER = "A single file is moved, renamed, reverted or deleted only in the browser.";
+
+/** What the instructions tell the model about the files of the folder: uploading only where the role allows it. */
+function filesFor(role: McpRole): string {
+  return mayDo(role, "editFile") ? `${FILES} ${UPLOADS} ${FILES_IN_BROWSER}` : `${FILES} ${FILES_IN_BROWSER}`;
+}
 
 /**
  * What `initialize` tells the model about the wiki and the connection, in one paragraph: the folder and the role of
@@ -111,7 +133,7 @@ export function instructionsFor(folderName: string, role: McpRole): string {
     `${siteName} is a wiki. This connection works on the folder "${folderName}" with the role ${ROLE_LABELS[role]}. ` +
     `${ROLE_ABILITIES[role]} ${USER_TEXT_NOTE} The folder holds pages, either directly or grouped in tabs, which are optional ` +
     "sections of the folder. Every page is written in Markdown and has a name, which is part of its address, and a " +
-    `title, which is its first heading. Tab and page names are ${NAME_RULE}. ${WIKI_LINKS} ${FILES} ${ADDRESS_HINT} Start ` +
+    `title, which is its first heading. Tab and page names are ${NAME_RULE}. ${WIKI_LINKS} ${filesFor(role)} ${ADDRESS_HINT} Start ` +
     "with list_folder for the tabs, pages and files of the folder, or search_pages for the pages and files that " +
     "match some words, then read_page for the content of one page or read_file for the details of one file."
   );
@@ -308,6 +330,29 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
         annotations: WRITES,
       },
       (input) => moveOrRenamePage(options, input),
+    );
+  }
+
+  if (mayDo(role, "editFile")) {
+    server.registerTool(
+      "get_file_upload_link",
+      {
+        title: "Get an upload link for a file",
+        description:
+          "Gives a link that uploads one image or PDF into the folder of this connection without a login, for a few " +
+          "minutes: a new file, or with lockVersion a new version of an existing file. State the name with its " +
+          "extension, the tab, if any, and the exact size of the file in bytes; the link takes only a file of that " +
+          "size and of the type of its extension. Send the bytes of the file as the body of a POST to the link, such " +
+          "as with the curlCommand of the result, with the path of the local file in place of its placeholder; its " +
+          "answer says whether the file was stored. Then add the file to a page with the embedLink or wikiLink of " +
+          "the result. A link stores at most one upload; ask for a new one to upload again. An image loses its " +
+          "location and camera data unless removeMetadata is false. Never write the link into a page: anyone who " +
+          `reads it can upload into the folder until it expires. ${USER_TEXT_NOTE}`,
+        inputSchema: fileUploadLinkInput,
+        outputSchema: fileUploadLinkOutput,
+        annotations: WRITES,
+      },
+      (input) => getFileUploadLink(options, input),
     );
   }
 

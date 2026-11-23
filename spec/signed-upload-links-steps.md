@@ -43,7 +43,7 @@ way, so that the app can show it in the pages it writes. The plan is written fro
 - [x] Token of an upload link
 - [x] Upload link service
 - [x] Upload address with a token
-- [ ] MCP tool get_file_upload_link
+- [x] MCP tool get_file_upload_link
 - [ ] Spec tests
 - [ ] Wrap-up
 

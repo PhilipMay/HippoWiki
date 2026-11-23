@@ -12,7 +12,7 @@ import {
   SEARCH_TOOL_DEFAULT_RESULTS,
   SEARCH_TOOL_MAX_RESULTS,
 } from "@/features/search/limits";
-import { NAME_MAX_LENGTH } from "@/lib/name-limits";
+import { FILE_EXTENSIONS, NAME_MAX_LENGTH } from "@/lib/name-limits";
 
 /**
  * The whole rule of a tab or page name, length limit included, as the instructions, the descriptions of the arguments
@@ -89,6 +89,43 @@ export const readFileInput = z.object({
       "The name of the tab the file is in. Leave it out, or pass null, for a file placed directly in the folder.",
     ),
   file: z.string().describe("The name of the file with its extension, such as diagram.png, as list_folder returns it"),
+});
+
+/**
+ * What `get_file_upload_link` takes: the place and the name of the file, its exact size, the lock version of the file
+ * that a new version is based on, and the choice of the metadata. The numbers are plain numbers, so that a size the
+ * wiki does not take is a tool error that names the limit.
+ */
+export const fileUploadLinkInput = z.object({
+  tab: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "The name of an existing tab to upload the file into. Leave it out, or pass null, for a file placed directly " +
+        "in the folder.",
+    ),
+  file: z
+    .string()
+    .describe(
+      `The name of the file with the extension of its type, such as diagram.png: ${NAME_RULE} before the dot, ` +
+        `then ${FILE_EXTENSIONS.join(", ")}. For a new version, the name of the file as list_folder returns it`,
+    ),
+  size: z.number().describe("The exact size of the file in bytes; the link takes only a file of this size"),
+  lockVersion: z
+    .number()
+    .optional()
+    .describe(
+      "Leave it out for a new file. For a new version of an existing file, the lockVersion that read_file or " +
+        "list_folder gave for it; the link is refused if the file has changed since",
+    ),
+  removeMetadata: z
+    .boolean()
+    .optional()
+    .describe(
+      "Whether location and camera data are removed from an image before it is stored; true without it. A PDF is " +
+        "always stored byte for byte",
+    ),
 });
 
 /**
@@ -418,6 +455,49 @@ export const fileDownloadLinkOutput = z.object({
         "file until then",
     ),
   expiresAt: z.string().describe("When the link stops working, as an ISO 8601 time in UTC"),
+});
+
+/**
+ * The placeholder for the local path of the file in the `curl` command of `get_file_upload_link`, which the app
+ * replaces with the path of the file it sends.
+ */
+export const LOCAL_FILE_PLACEHOLDER = "<path-of-the-local-file>";
+
+/**
+ * What `get_file_upload_link` returns: the file as it will be named, the link, its expiry, a ready `curl` command and
+ * the links that the file will have in a page. The link is no address for people: it stores one upload without a
+ * login until it expires, so it has no hint of the addresses.
+ */
+export const fileUploadLinkOutput = z.object({
+  note: NOTE_OUTPUT,
+  name: z.string().describe("The name of the file with its extension"),
+  tab: z.string().nullable().describe("The tab of the file, or null for a file placed directly in the folder"),
+  type: z.enum(["png", "jpeg", "gif", "webp", "pdf"]).describe("The type of the file, which follows its extension"),
+  size: z.number().int().describe("The exact size in bytes that the link takes, as stated"),
+  uploadLink: z
+    .string()
+    .describe(
+      "A link that stores one upload of the file without a login until expiresAt: send the bytes of the file as the " +
+        "body of a POST, such as with curlCommand. Never write it into a page: anyone who reads it can upload into " +
+        "the folder until it expires",
+    ),
+  expiresAt: z.string().describe("When the link stops working, as an ISO 8601 time in UTC"),
+  curlCommand: z
+    .string()
+    .describe(
+      `A curl command that sends a file to uploadLink; replace ${LOCAL_FILE_PLACEHOLDER} with the path of the ` +
+        "local file. Its answer is JSON: the file as stored, or why nothing was stored",
+    ),
+  wikiLink: z
+    .string()
+    .describe("The wiki link with which a page links the file after the upload, as read_file will give it"),
+  embedLink: z
+    .string()
+    .nullable()
+    .describe(
+      "The embed with which a page shows the image after the upload, as read_file will give it; null for a PDF, " +
+        "which cannot be shown",
+    ),
 });
 
 export const storedPageOutput = z.object({

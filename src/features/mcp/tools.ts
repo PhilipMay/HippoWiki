@@ -14,6 +14,7 @@ import type { McpActor } from "@/features/folder-roles/actors";
 import * as linkService from "@/features/files/link-service";
 import * as fileService from "@/features/files/service";
 import { isImageType } from "@/features/files/types";
+import * as uploadLinkService from "@/features/files/upload-link-service";
 import * as folderService from "@/features/folders/service";
 import type {
   createPageInput,
@@ -26,6 +27,8 @@ import type {
   editPageContentInput,
   fileDownloadLinkOutput,
   fileOutput,
+  fileUploadLinkInput,
+  fileUploadLinkOutput,
   listFolderOutput,
   movedPageOutput,
   moveOrRenamePageInput,
@@ -43,7 +46,7 @@ import type {
   updatedPagesOutput,
 } from "@/features/mcp/tool-schemas";
 import { applyEdits, type EditsResult } from "@/features/mcp/edits";
-import { NAME_RULE, USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
+import { LOCAL_FILE_PLACEHOLDER, NAME_RULE, USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import * as linksService from "@/features/pages/links-service";
 import { TITLE_HEADING_MISSING_MESSAGE } from "@/features/pages/schema";
@@ -65,9 +68,11 @@ import {
   folderPath,
   pagePath,
   tabPath,
+  uploadLinkPath,
 } from "@/lib/addresses";
+import { formatBytes } from "@/lib/format";
 import { logger } from "@/lib/logger";
-import { NAME_MAX_LENGTH } from "@/lib/name-limits";
+import { FILE_EXTENSIONS, NAME_MAX_LENGTH } from "@/lib/name-limits";
 
 /** What the tools need to know about the wiki they serve and the connection they serve it to. */
 export type WikiToolsOptions = {
@@ -401,6 +406,117 @@ export async function getFileDownloadLink(
       }) satisfies z.infer<typeof fileDownloadLinkOutput>,
     );
   });
+}
+
+/** The answer to a link that could not be made for a reason that cannot be told apart from the outside. */
+const UPLOAD_LINK_FAILED = "The upload link could not be made. Please try again later.";
+
+/** What every refusal of `get_file_upload_link` adds: no link was made. */
+const NO_LINK = "No link was made.";
+
+/** The whole rule of a file name, as the tool errors of `get_file_upload_link` state it. */
+const FILE_NAME_RULE =
+  `${NAME_RULE} before the dot, then the extension of its type: ${FILE_EXTENSIONS.join(", ")}, such as ` +
+  "diagram.png";
+
+/** The `curl` command that sends a local file to the upload link, with the placeholder for its path. */
+function curlCommandOf(uploadLink: string): string {
+  return `curl --fail-with-body --data-binary @'${LOCAL_FILE_PLACEHOLDER}' -H 'Content-Type: application/octet-stream' '${uploadLink}'`;
+}
+
+/** The tool error of a request for an upload link that the service refused, with what to do next. */
+function uploadLinkRefusal(
+  options: WikiToolsOptions,
+  tab: string | null,
+  file: string,
+  error: uploadLinkService.CreateUploadLinkError,
+): CallToolResult {
+  const place = placeOf(options.folder.name, tab);
+  switch (error.code) {
+    case "not-allowed":
+      return toolError(`Your role on the folder does not allow uploading files. ${NO_LINK}`);
+    case "folder-not-found":
+      return folderGone();
+    case "tab-not-found":
+      return tabNotFound(options, tab ?? "");
+    case "invalid-input":
+      return toolError(`The name "${file}" is not a valid file name. A file name is ${FILE_NAME_RULE}. ${NO_LINK}`);
+    case "invalid-extension":
+      return toolError(
+        `The extension of "${file}" is of no type the wiki takes. Only images and PDFs are taken, with the ` +
+          `extensions ${FILE_EXTENSIONS.join(", ")}; a JPEG ends in .jpg. ${NO_LINK}`,
+      );
+    case "invalid-size":
+      return toolError(`The size is the exact size of the file in bytes, a whole number from 1 up. ${NO_LINK}`);
+    case "too-large":
+      return toolError(
+        `The size is over ${error.limit.toLocaleString("en-US")} bytes (${formatBytes(error.limit)}), the size ` +
+          `limit of the wiki. ${NO_LINK}`,
+      );
+    case "files-off":
+      return toolError(`No file can be uploaded: the server of the wiki has no place to keep files. ${NO_LINK}`);
+    case "name-taken":
+      return toolError(
+        `A file named "${file}" already exists ${place}. ${NO_LINK} To upload a new version of it, read it with ` +
+          "read_file and state its lockVersion; otherwise choose another name.",
+      );
+    case "file-not-found":
+      return toolError(
+        `There is no file named "${file}" ${place} to upload a new version of. ${NO_LINK} Use list_folder to see ` +
+          "the files of the folder; leave lockVersion out to upload a new file.",
+      );
+    case "file-changed":
+      return toolError(
+        `The file "${file}" ${place} has changed since the lockVersion stated. ${NO_LINK} Read the file again with ` +
+          "read_file and decide whether to upload a new version based on its current lockVersion.",
+      );
+    case "failed":
+      return toolError(UPLOAD_LINK_FAILED);
+  }
+}
+
+/**
+ * The tool `get_file_upload_link`: a short-lived signed link that stores one upload of an image or PDF of exactly the
+ * stated size under the name at the place, as a new file, or as a new version of the file of that name with the lock
+ * version that `read_file` gave (`upload-link-service.ts`). Everything that can be checked without the bytes is checked
+ * first, and each refusal is a tool error that says what to do next. The result holds the link, a ready `curl`
+ * command and the wiki link and embed link that the file will have. Neither the link nor its token is logged: the log
+ * line of the call names only the tab and the file. Making a link stores nothing.
+ */
+export async function getFileUploadLink(
+  options: WikiToolsOptions,
+  input: z.infer<typeof fileUploadLinkInput>,
+): Promise<CallToolResult> {
+  return run(
+    options,
+    "get_file_upload_link",
+    input,
+    async () => {
+      const tab = input.tab ?? null;
+      const link = await uploadLinkService.createUploadLink(options.actor, options.folder.name, tab, input.file, {
+        size: input.size,
+        lockVersion: input.lockVersion ?? null,
+        stripMetadata: input.removeMetadata ?? true,
+      });
+      if (!link.ok) return uploadLinkRefusal(options, tab, input.file, link.error);
+      const { name, tab: fileTab, type, size, token, expiresAt } = link.value;
+      const uploadLink = addressOf(options, uploadLinkPath(options.folder.name, fileTab, name, token));
+      return result(
+        withNote({
+          name,
+          tab: fileTab,
+          type,
+          size,
+          uploadLink,
+          expiresAt: expiresAt.toISOString(),
+          curlCommand: curlCommandOf(uploadLink),
+          wikiLink: wikiLinkOf({ tab: fileTab, name }),
+          embedLink: isImageType(type) ? embedLinkOf({ tab: fileTab, name }) : null,
+        }) satisfies z.infer<typeof fileUploadLinkOutput>,
+      );
+    },
+    UPLOAD_LINK_FAILED,
+  );
 }
 
 /** Whether the value is a whole number from `min` to `max`. */

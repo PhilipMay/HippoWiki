@@ -89,6 +89,7 @@ test.describe("the write tools", () => {
       "read_file",
       "get_file_download_link",
       ...writeTools,
+      "get_file_upload_link",
     ]);
     expect(await listed(secret, address)).toEqual([
       "list_folder",
@@ -104,6 +105,15 @@ test.describe("the write tools", () => {
     });
     expect(await answer.json()).toMatchObject({ error: { code: -32602, message: "Tool create_page not found" } });
     expect(await storedPages()).toEqual([]);
+    // A Reader connection gets no upload link either, and no file is stored.
+    const upload = await send(request, {
+      method: "tools/call",
+      params: { name: "get_file_upload_link", arguments: { file: "sneaky.png", size: 100 } },
+    });
+    expect(await upload.json()).toMatchObject({
+      error: { code: -32602, message: "Tool get_file_upload_link not found" },
+    });
+    expect(await getTestDb().file.count({ where: { folderId: projects.id } })).toBe(0);
   });
 
   test("initialize at the Writer address says that the addresses are for people", async ({ request }) => {
@@ -120,6 +130,13 @@ test.describe("the write tools", () => {
     const { instructions } = ((await response.json()) as { result: { instructions: string } }).result;
     expect(instructions).toContain('the folder "projects" with the role Writer');
     expect(instructions).toContain(ADDRESS_HINT);
+    // A Writer connection uploads files with an upload link, which never belongs into a page.
+    expect(instructions).toContain("call get_file_upload_link with its name, tab and exact size in bytes");
+    expect(instructions).toContain(
+      "Never write an upload link into a page, because it lets anyone who reads it upload into the folder until it " +
+        "expires.",
+    );
+    expect(instructions).toContain("A single file is moved, renamed, reverted or deleted only in the browser.");
   });
 
   test("create_page without a name gives the page the suggested name; bad input is a tool error and creates nothing", async ({

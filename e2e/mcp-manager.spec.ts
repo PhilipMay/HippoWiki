@@ -349,7 +349,7 @@ test.describe("the tools of a Manager connection", () => {
     expect(await stored()).toEqual(before);
   });
 
-  test("the tool list of a Manager connection has thirteen tools, the destructive hint on the content changes and the deletes and none for deleted pages, roles or the folder", async ({
+  test("the tool list of a Manager connection has fourteen tools, the destructive hint on the content changes and the deletes and none for deleted pages, roles or the folder", async ({
     request,
   }) => {
     const answer = await send(request, { method: "tools/list" }, manager, managerAddress);
@@ -376,6 +376,7 @@ test.describe("the tools of a Manager connection", () => {
       "replace_page_content",
       "edit_page_content",
       "move_or_rename_page",
+      "get_file_upload_link",
       "delete_page",
       "create_tab",
       "rename_tab",
@@ -392,14 +393,18 @@ test.describe("the tools of a Manager connection", () => {
     expect(hints.create_tab?.destructiveHint).toBe(false);
     expect(hints.rename_tab?.destructiveHint).toBe(false);
     expect(tools.map(({ name }) => name).join(" ")).not.toMatch(/restore|deleted|role|owner|folder_/);
-    // No tool uploads, changes, moves, renames or deletes a single file: delete_tab deletes files only with their tab,
-    // and read_file and get_file_download_link only read.
+    // No tool moves, renames, reverts or deletes a single file: delete_tab deletes files only with their tab,
+    // read_file and get_file_download_link only read, and get_file_upload_link adds a file or a version, which keeps
+    // the old ones, so it writes and destroys nothing, like create_page.
     expect(tools.map(({ name }) => name).filter((name) => /file|upload/.test(name))).toEqual([
       "read_file",
       "get_file_download_link",
+      "get_file_upload_link",
     ]);
     expect(hints.read_file).toMatchObject({ readOnlyHint: true, destructiveHint: false });
     expect(hints.get_file_download_link).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+    expect(hints.get_file_upload_link).toStrictEqual(hints.create_page);
+    expect(hints.get_file_upload_link).toMatchObject({ readOnlyHint: false, destructiveHint: false });
     expect(tools.find(({ name }) => name === "delete_tab")?.description).toContain(
       "together with every page and every file (image or PDF) in it",
     );
@@ -428,6 +433,8 @@ test.describe("the tools of a Manager connection", () => {
     expect(instructions).toContain("Deleting a tab deletes all its pages and files with it.");
     expect(instructions).toContain("Deleted items can be neither seen nor restored through this connection");
     expect(instructions).toContain(ADDRESS_HINT);
+    expect(instructions).toContain("call get_file_upload_link with its name, tab and exact size in bytes");
+    expect(instructions).toContain("Never write an upload link into a page");
   });
 
   test("a call of delete_page, create_tab, rename_tab or delete_tab through a Writer or a Reader connection changes nothing", async ({

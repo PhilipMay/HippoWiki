@@ -4,10 +4,10 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { McpActor } from "@/features/folder-roles/actors";
-import { checkLinkToken } from "@/features/files/link-token";
+import { checkLinkToken, checkUploadLinkToken } from "@/features/files/link-token";
 import { MCP_ROLES, mayDo, type FolderFunction } from "@/features/folder-roles/roles";
 import { createWikiServer, instructionsFor } from "@/features/mcp/server";
-import { ADDRESS_HINT, USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
+import { ADDRESS_HINT, LOCAL_FILE_PLACEHOLDER, USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 import { CONTENT_MAX_LENGTH } from "@/features/pages/limits";
 import { analyseMarkdown } from "@/features/pages/markdown";
 import {
@@ -33,6 +33,7 @@ const USER_TEXT_TOOLS = [
   "replace_page_content",
   "edit_page_content",
   "move_or_rename_page",
+  "get_file_upload_link",
   "delete_page",
   "rename_tab",
   "delete_tab",
@@ -43,6 +44,7 @@ const TAB_TOOLS = ["create_tab"];
 const mocks = vi.hoisted(() => ({
   listTabs: vi.fn(),
   getTab: vi.fn(),
+  getFolderByName: vi.fn(),
   listAllFolderPages: vi.fn(),
   getPage: vi.fn(),
   createPage: vi.fn(),
@@ -58,6 +60,7 @@ const mocks = vi.hoisted(() => ({
   listAllFolderFiles: vi.fn(),
   getFile: vi.fn(),
   getCurrentFileVersion: vi.fn(),
+  checkUploadName: vi.fn(),
   getStore: vi.fn(),
   findLinkKey: vi.fn(),
   info: vi.fn(),
@@ -68,6 +71,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/features/folders/service", () => ({
   listTabs: mocks.listTabs,
   getTab: mocks.getTab,
+  getFolderByName: mocks.getFolderByName,
   createTab: mocks.createTab,
   renameTab: mocks.renameTab,
   deleteTab: mocks.deleteTab,
@@ -89,13 +93,15 @@ vi.mock("@/features/files/service", () => ({
   listAllFolderFiles: mocks.listAllFolderFiles,
   getFile: mocks.getFile,
   getCurrentFileVersion: mocks.getCurrentFileVersion,
+  checkUploadName: mocks.checkUploadName,
 }));
-// The links to files are made by the real links service, with the key of the links from a mocked database.
+// The links to files and the upload links are made by the real links services, with the key of the links from a
+// mocked database.
 vi.mock("@/features/files/store", () => ({ getStore: mocks.getStore }));
 vi.mock("@/lib/db", () => ({ getDb: () => ({ fileLinkKey: { findUnique: mocks.findLinkKey } }) }));
 vi.mock("@/lib/env", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/env")>()),
-  getServerEnv: () => ({ HIPPOWIKI_FILE_LINK_LIFETIME: LINK_LIFETIME }),
+  getServerEnv: () => ({ HIPPOWIKI_FILE_LINK_LIFETIME: LINK_LIFETIME, HIPPOWIKI_FILE_SIZE_LIMIT: SIZE_LIMIT }),
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: mocks.info, warn: mocks.warn, error: mocks.error } }));
 // The real parse, watched, to see whether the content was parsed.
@@ -107,6 +113,8 @@ vi.mock("@/features/pages/markdown", async (importOriginal) => {
 const PUBLIC_URL = "https://wiki.example.com";
 /** The lifetime of the links to files in the environment of the tests, in seconds. */
 const LINK_LIFETIME = 600;
+/** The size limit of a file in the environment of the tests, in bytes: 25 MiB. */
+const SIZE_LIMIT = 25 * 1024 * 1024;
 /** The key of the links to files in the mocked database. */
 const LINK_KEY = randomBytes(32);
 const VERSION_ID = "5e7a9c1b-3d5f-4a7c-9e1b-3d5f7a9c1b20";
@@ -300,7 +308,7 @@ describe("the instructions", () => {
   );
 
   it.each(["reader", "writer", "manager"] as const)(
-    "state the grammar of files for a %s connection, and that a single file changes only in the browser",
+    "state the grammar of files for a %s connection, and that a single file is moved, renamed, reverted or deleted only in the browser",
     (role) => {
       const instructions = instructionsFor("handbook", role);
       expect(instructions).toContain("images (PNG, JPEG, GIF, WebP) and PDFs");
@@ -308,12 +316,38 @@ describe("the instructions", () => {
       expect(instructions).toContain("[[name.ext]] or [[tab/name.ext]]");
       expect(instructions).toContain("![[name.ext]] or ![[tab/name.ext]]");
       expect(instructions).toContain("no tool returns the content of a file");
-      expect(instructions).toContain(
-        "A single file is uploaded, changed, moved, renamed or deleted only in the browser.",
-      );
+      expect(instructions).toContain("A single file is moved, renamed, reverted or deleted only in the browser.");
+      expect(instructions).not.toContain("uploaded only in the browser");
+      expect(instructions).not.toMatch(/is uploaded, [^.]* only in the browser/u);
       expect(instructions).toContain("read_file for the details of one file");
     },
   );
+
+  it.each(["writer", "manager"] as const)(
+    "of a %s connection name get_file_upload_link, say how a file is uploaded and added to a page, and warn against writing its link into a page",
+    (role) => {
+      const instructions = instructionsFor("handbook", role);
+
+      expect(instructions).toContain(
+        "To upload an image or PDF from a local file, as a new file or as a new version of a file, call " +
+          "get_file_upload_link with its name, tab and exact size in bytes, and for a new version the lockVersion " +
+          "that read_file or list_folder gave for the file; then send the file to the link with the curlCommand of " +
+          "the result",
+      );
+      expect(instructions).toContain("add the file to a page with the embedLink or wikiLink of the result");
+      expect(instructions).toContain(
+        "Never write an upload link into a page, because it lets anyone who reads it upload into the folder until " +
+          "it expires.",
+      );
+    },
+  );
+
+  it("of a Reader connection offer no uploading", () => {
+    const instructions = instructionsFor("handbook", "reader");
+
+    expect(instructions).not.toContain("get_file_upload_link");
+    expect(instructions).not.toMatch(/upload/iu);
+  });
 });
 
 describe("the read tools", () => {
@@ -867,6 +901,292 @@ describe("get_file_download_link", () => {
   });
 });
 
+describe("get_file_upload_link", () => {
+  const NOW = new Date("2026-11-23T10:00:00.400Z");
+  const NOW_SECONDS = Math.floor(NOW.getTime() / 1000);
+  const FILE_ID = "3a5c7e91-1b2d-4f6a-8c0e-2d4f6a8c0e12";
+  const TAB_ID = "6b8d0f23-4c5e-4a7b-9d1f-3e5a7c9b1d24";
+  const TAB = { id: TAB_ID, name: "guides", folder: FOLDER, role: "writer" };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
+    actor = WRITER;
+    mocks.getFolderByName.mockResolvedValue({ ...FOLDER, role: "writer" });
+    mocks.getTab.mockResolvedValue(TAB);
+    mocks.checkUploadName.mockResolvedValue({ ok: true, value: null });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** The link of a result, and the data of its token checked with the key of the links. */
+  function linkOf(result: ToolResult) {
+    const { uploadLink } = result.structuredContent as { uploadLink: string };
+    const url = new URL(uploadLink);
+    const checked = checkUploadLinkToken(LINK_KEY, url.searchParams.get("token") ?? "");
+    return { uploadLink, url, data: checked.ok ? checked.data : null };
+  }
+
+  /** Expects that no link was made: the key of the links was never read. */
+  function expectNoLink(): void {
+    expect(mocks.findLinkKey).not.toHaveBeenCalled();
+  }
+
+  it.each([
+    ["a new image in a tab", "guides", "diagram.png", "png", "/api/uploads/handbook/guides/diagram.png", TAB_ID],
+    ["a new PDF placed directly in the folder", null, "manual.pdf", "pdf", "/api/uploads/handbook/manual.pdf", null],
+  ])(
+    "returns for %s a link below the public URL with the path of the upload address and the token as its only query",
+    async (_case, tab, name, type, path, tabId) => {
+      const result = await callTool("get_file_upload_link", { tab, file: name, size: 2048 });
+
+      expect(mocks.getFolderByName).toHaveBeenCalledExactlyOnceWith(WRITER, "handbook");
+      expect(mocks.checkUploadName).toHaveBeenCalledExactlyOnceWith(WRITER, { folderId: FOLDER_ID, tabId }, name);
+      const { uploadLink, url, data } = linkOf(result);
+      expect(url.origin).toBe(PUBLIC_URL);
+      expect(url.pathname).toBe(path);
+      expect([...url.searchParams.keys()]).toEqual(["token"]);
+      expect(uploadLink).toBe(`${PUBLIC_URL}${path}?token=${url.searchParams.get("token")}`);
+      expect(data).toStrictEqual({
+        use: "file-upload-link",
+        v: 1,
+        grant: WRITER.connection.grantId,
+        tab: tabId,
+        name,
+        size: 2048,
+        // The choice of the metadata is on by default, and never for a PDF.
+        strip: type !== "pdf",
+        file: null,
+        lockVersion: null,
+        exp: NOW_SECONDS + LINK_LIFETIME,
+      });
+      expect(result.structuredContent).toMatchObject({ name, tab, type, size: 2048 });
+    },
+  );
+
+  it("starts its result with the note, then the file, the link, its expiry, the curl command and the links of the file", async () => {
+    const result = await callTool("get_file_upload_link", { tab: "guides", file: "diagram.png", size: 2048 });
+
+    const structured = result.structuredContent as Record<string, unknown>;
+    const { uploadLink } = linkOf(result);
+    expect(Object.keys(structured)).toEqual([
+      "note",
+      "name",
+      "tab",
+      "type",
+      "size",
+      "uploadLink",
+      "expiresAt",
+      "curlCommand",
+      "wikiLink",
+      "embedLink",
+    ]);
+    expect(structured).toStrictEqual({
+      note: USER_TEXT_NOTE,
+      name: "diagram.png",
+      tab: "guides",
+      type: "png",
+      size: 2048,
+      uploadLink,
+      expiresAt: "2026-11-23T10:10:00.000Z",
+      curlCommand:
+        `curl --fail-with-body --data-binary @'${LOCAL_FILE_PLACEHOLDER}' ` +
+        `-H 'Content-Type: application/octet-stream' '${uploadLink}'`,
+      wikiLink: "[[guides/diagram.png]]",
+      embedLink: "![[guides/diagram.png]]",
+    });
+    expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(structured);
+  });
+
+  it("gives a PDF the wiki link and no embed link", async () => {
+    const result = await callTool("get_file_upload_link", { file: "manual.pdf", size: 2048 });
+
+    expect(result.structuredContent).toMatchObject({ wikiLink: "[[manual.pdf]]", embedLink: null });
+  });
+
+  it.each([
+    ["an image without the choice", "diagram.png", undefined, true],
+    ["an image with removeMetadata true", "diagram.png", true, true],
+    ["an image with removeMetadata false", "diagram.png", false, false],
+    ["a PDF with removeMetadata true", "manual.pdf", true, false],
+  ])("carries the choice of the metadata in the link for %s", async (_case, file, removeMetadata, strip) => {
+    const result = await callTool("get_file_upload_link", {
+      file,
+      size: 2048,
+      ...(removeMetadata === undefined ? {} : { removeMetadata }),
+    });
+
+    expect(linkOf(result).data?.strip).toBe(strip);
+  });
+
+  it("binds a link for a new version to the file and the lock version stated", async () => {
+    mocks.checkUploadName.mockResolvedValue({ ok: true, value: { id: FILE_ID, lockVersion: 3 } });
+
+    const result = await callTool("get_file_upload_link", { file: "manual.pdf", size: 2048, lockVersion: 3 });
+
+    expect(linkOf(result).data).toMatchObject({ file: FILE_ID, lockVersion: 3, strip: false });
+  });
+
+  /** Each refusal: the case, the arguments, what makes the service refuse, and the tool error. */
+  const REFUSALS: [string, Record<string, unknown>, () => unknown, string][] = [
+    [
+      "a tab that does not exist",
+      { tab: "news", file: "diagram.png", size: 2048 },
+      () => mocks.getTab.mockResolvedValue(null),
+      'There is no tab named "news" in the folder "handbook", so nothing was changed. Use list_folder to see the ' +
+        "tabs of the folder; tabs are created in the browser.",
+    ],
+    [
+      "a name against the rule",
+      { file: "My Diagram.png", size: 2048 },
+      () =>
+        mocks.checkUploadName.mockResolvedValue({
+          ok: false,
+          error: { code: "invalid-input", fieldErrors: { name: ["Use lowercase letters"] } },
+        }),
+      'The name "My Diagram.png" is not a valid file name. A file name is lowercase letters, digits and single ' +
+        `hyphens, ${LENGTH_LIMIT} before the dot, then the extension of its type: png, jpg, gif, webp, pdf, such ` +
+        "as diagram.png. No link was made.",
+    ],
+    [
+      "an extension of another type",
+      { file: "diagram.svg", size: 2048 },
+      () =>
+        mocks.checkUploadName.mockResolvedValue({
+          ok: false,
+          error: { code: "invalid-input", fieldErrors: { name: ["Use lowercase letters"] } },
+        }),
+      'The extension of "diagram.svg" is of no type the wiki takes. Only images and PDFs are taken, with the ' +
+        "extensions png, jpg, gif, webp, pdf; a JPEG ends in .jpg. No link was made.",
+    ],
+    [
+      "a size over the size limit",
+      { file: "diagram.png", size: SIZE_LIMIT + 1 },
+      () => undefined,
+      "The size is over 26,214,400 bytes (25 MiB), the size limit of the wiki. No link was made.",
+    ],
+    [
+      "a size of no bytes",
+      { file: "diagram.png", size: 0 },
+      () => undefined,
+      "The size is the exact size of the file in bytes, a whole number from 1 up. No link was made.",
+    ],
+    [
+      "a size that is no whole number",
+      { file: "diagram.png", size: 10.5 },
+      () => undefined,
+      "The size is the exact size of the file in bytes, a whole number from 1 up. No link was made.",
+    ],
+    [
+      "a taken name for a new file",
+      { tab: "guides", file: "diagram.png", size: 2048 },
+      () => mocks.checkUploadName.mockResolvedValue({ ok: true, value: { id: FILE_ID, lockVersion: 3 } }),
+      'A file named "diagram.png" already exists in the tab "guides" of the folder "handbook". No link was made. ' +
+        "To upload a new version of it, read it with read_file and state its lockVersion; otherwise choose another " +
+        "name.",
+    ],
+    [
+      "a missing file for a new version",
+      { file: "diagram.png", size: 2048, lockVersion: 3 },
+      () => undefined,
+      'There is no file named "diagram.png" directly in the folder "handbook" to upload a new version of. No link ' +
+        "was made. Use list_folder to see the files of the folder; leave lockVersion out to upload a new file.",
+    ],
+    [
+      "a lock version that is not the current one",
+      { file: "diagram.png", size: 2048, lockVersion: 2 },
+      () => mocks.checkUploadName.mockResolvedValue({ ok: true, value: { id: FILE_ID, lockVersion: 3 } }),
+      'The file "diagram.png" directly in the folder "handbook" has changed since the lockVersion stated. No link ' +
+        "was made. Read the file again with read_file and decide whether to upload a new version based on its " +
+        "current lockVersion.",
+    ],
+    [
+      "the files off",
+      { file: "diagram.png", size: 2048 },
+      () => mocks.getStore.mockResolvedValue({ on: false, reason: "not-set", dir: null }),
+      "No file can be uploaded: the server of the wiki has no place to keep files. No link was made.",
+    ],
+    [
+      "a role lowered meanwhile",
+      { file: "diagram.png", size: 2048 },
+      () => mocks.checkUploadName.mockResolvedValue({ ok: false, error: { code: "not-allowed" } }),
+      "Your role on the folder does not allow uploading files. No link was made.",
+    ],
+    [
+      "a folder that cannot be read any more",
+      { file: "diagram.png", size: 2048 },
+      () => mocks.getFolderByName.mockResolvedValue(null),
+      "The folder of this connection cannot be read any more. The user's role on it may have changed.",
+    ],
+    [
+      "a failed check of the name",
+      { file: "diagram.png", size: 2048 },
+      () => mocks.checkUploadName.mockResolvedValue({ ok: false, error: { code: "failed" } }),
+      "The upload link could not be made. Please try again later.",
+    ],
+  ];
+
+  it.each(REFUSALS)(
+    "answers %s with a tool error that says what to do, and gives no link",
+    async (_case, args, arrange, message) => {
+      arrange();
+
+      expect(errorOf(await callTool("get_file_upload_link", args))).toBe(message);
+      expectNoLink();
+    },
+  );
+
+  it("logs the call with the grant, the user, the folder, the role, the tool, the tab, the file and the outcome, and no part of the token", async () => {
+    const result = await callTool("get_file_upload_link", { tab: "guides", file: "diagram.png", size: 2048 });
+
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      {
+        grantId: WRITER.connection.grantId,
+        userId: WRITER.id,
+        folderId: FOLDER_ID,
+        role: "writer",
+        tool: "get_file_upload_link",
+        names: { tab: "guides", file: "diagram.png" },
+        outcome: "worked",
+      },
+      "mcp tool called",
+    );
+    const token = linkOf(result).url.searchParams.get("token") ?? "";
+    const [dataPart = "", signature = ""] = token.split(".");
+    const logged = JSON.stringify([mocks.info.mock.calls, mocks.warn.mock.calls, mocks.error.mock.calls]);
+    expect(logged).not.toContain(dataPart.slice(0, 16));
+    expect(logged).not.toContain(signature.slice(0, 16));
+    expect(logged).not.toContain("/api/uploads");
+  });
+
+  it("is a tool of a Writer and a Manager connection that writes and destroys nothing, describes the link and ends with the note", async () => {
+    for (const role of ["writer", "manager"] as const) {
+      actor = { ...READER, connection: { ...READER.connection, role } };
+      const tools = (await send({ method: "tools/list" })).result?.tools as {
+        name: string;
+        description: string;
+        annotations: Record<string, boolean>;
+        outputSchema: { properties: Record<string, { description?: string }> };
+      }[];
+      const tool = tools.find(({ name }) => name === "get_file_upload_link");
+
+      expect(tool?.annotations, role).toStrictEqual({
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      });
+      expect(tool?.description).toContain("uploads one image or PDF into the folder of this connection");
+      expect(tool?.description).toContain("Never write the link into a page");
+      expect(tool?.description.endsWith(USER_TEXT_NOTE)).toBe(true);
+      expect(tool?.outputSchema.properties.uploadLink?.description).toContain("stores one upload");
+      expect(tool?.outputSchema.properties.uploadLink?.description).toContain("Never write it into a page");
+      expect(tool?.outputSchema.properties.curlCommand?.description).toContain(LOCAL_FILE_PLACEHOLDER);
+    }
+  });
+});
+
 describe("search_pages", () => {
   /** A page that a search found, as the search service returns it. */
   function found(name: string, tab: string | null = null) {
@@ -1191,8 +1511,9 @@ describe("the write tools", () => {
       "replace_page_content",
       "edit_page_content",
       "move_or_rename_page",
+      "get_file_upload_link",
     ]);
-    const [create, replace, edit, move] = tools.slice(5);
+    const [create, replace, edit, move, upload] = tools.slice(5);
     expect(Object.keys(create?.inputSchema.properties ?? {})).toEqual(["content", "tab", "name"]);
     expect(create?.inputSchema.required).toEqual(["content"]);
     expect(Object.keys(replace?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version", "content"]);
@@ -1201,6 +1522,15 @@ describe("the write tools", () => {
     expect(edit?.inputSchema.required).toEqual(["page", "edits"]);
     expect(Object.keys(move?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version", "newTab", "newName"]);
     expect(move?.inputSchema.required).toEqual(["page", "newTab", "newName"]);
+    expect(Object.keys(upload?.inputSchema.properties ?? {})).toEqual([
+      "tab",
+      "file",
+      "size",
+      "lockVersion",
+      "removeMetadata",
+    ]);
+    expect(upload?.inputSchema.required).toEqual(["file", "size"]);
+    expect(upload?.inputSchema.properties?.file?.description).toContain(LENGTH_LIMIT);
     expect(create?.inputSchema.properties?.name?.description).toContain(LENGTH_LIMIT);
     expect(move?.inputSchema.properties?.newName?.description).toContain(LENGTH_LIMIT);
     for (const tool of tools.slice(5)) {
@@ -1212,6 +1542,14 @@ describe("the write tools", () => {
     expect(replace?.annotations.destructiveHint).toBe(true);
     // A replacement can remove any text, so the tool carries the hints of the full replacement.
     expect(edit?.annotations).toStrictEqual(replace?.annotations);
+    // A new version keeps the old ones, so the upload link writes and destroys nothing, like create_page.
+    expect(upload?.annotations).toStrictEqual({
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    });
+    expect(upload?.annotations).toStrictEqual(create?.annotations);
   });
 
   it("are registered for a Manager connection as well, after the read tools", async () => {
@@ -1219,7 +1557,7 @@ describe("the write tools", () => {
 
     const answer = await send({ method: "tools/list" });
 
-    expect((answer.result?.tools as { name: string }[]).map((tool) => tool.name).slice(0, 9)).toEqual([
+    expect((answer.result?.tools as { name: string }[]).map((tool) => tool.name).slice(0, 10)).toEqual([
       "list_folder",
       "read_page",
       "search_pages",
@@ -1229,6 +1567,7 @@ describe("the write tools", () => {
       "replace_page_content",
       "edit_page_content",
       "move_or_rename_page",
+      "get_file_upload_link",
     ]);
   });
 
@@ -1244,6 +1583,10 @@ describe("the write tools", () => {
       method: "tools/call",
       params: { name: "edit_page_content", arguments: { page: "setup", version: 4, edits: [] } },
     });
+    const upload = await send({
+      method: "tools/call",
+      params: { name: "get_file_upload_link", arguments: { file: "diagram.png", size: 100 } },
+    });
 
     expect((list.result?.tools as { name: string }[]).map((tool) => tool.name)).toEqual([
       "list_folder",
@@ -1254,6 +1597,10 @@ describe("the write tools", () => {
     ]);
     expectToolNotFound(call, "create_page");
     expectToolNotFound(edit, "edit_page_content");
+    expectToolNotFound(upload, "get_file_upload_link");
+    expect(mocks.getFolderByName).not.toHaveBeenCalled();
+    expect(mocks.checkUploadName).not.toHaveBeenCalled();
+    expect(mocks.findLinkKey).not.toHaveBeenCalled();
     expect(mocks.createPage).not.toHaveBeenCalled();
     expect(mocks.getPage).not.toHaveBeenCalled();
     expect(mocks.updatePageContent).not.toHaveBeenCalled();
@@ -1795,7 +2142,7 @@ describe("the tools of a Manager connection", () => {
   it("are registered for a Manager connection after the write tools, with inputs, output schemas and hints", async () => {
     const tools = await listedTools();
 
-    expect(tools.map((tool) => tool.name).slice(9)).toEqual(MANAGER_TOOLS);
+    expect(tools.map((tool) => tool.name).slice(10)).toEqual(MANAGER_TOOLS);
     const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]));
     expect(Object.keys(byName.delete_page?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version"]);
     expect(byName.delete_page?.inputSchema.required).toEqual(["page"]);
@@ -1822,8 +2169,8 @@ describe("the tools of a Manager connection", () => {
   });
 
   it.each([
-    ["Manager", 13, MANAGER],
-    ["Writer", 9, WRITER],
+    ["Manager", 14, MANAGER],
+    ["Writer", 10, WRITER],
     ["Reader", 5, READER],
   ])("give a %s connection %i tools", async (_role, count, other) => {
     actor = other;
@@ -2111,6 +2458,7 @@ describe("the tools of each role", () => {
     ["replace_page_content", "editPage"],
     ["edit_page_content", "editPage"],
     ["move_or_rename_page", "moveOrRenamePage"],
+    ["get_file_upload_link", "editFile"],
     ["delete_page", "deletePage"],
     ["create_tab", "editTab"],
     ["rename_tab", "editTab"],
@@ -2128,7 +2476,7 @@ describe("the tools of each role", () => {
   });
 
   it.each(MCP_ROLES)(
-    "of a %s connection include none that uploads, changes, moves, renames or deletes a single file",
+    "of a %s connection include none that moves, renames, reverts or deletes a single file, and one that uploads only where the role may upload",
     async (role) => {
       actor = { ...READER, connection: { ...READER.connection, role } };
 
@@ -2138,15 +2486,21 @@ describe("the tools of each role", () => {
         annotations: Record<string, boolean>;
       }[];
 
-      // The two tools that take a file only read it; delete_tab deletes files only together with their tab.
+      // Two tools that take a file only read it, get_file_upload_link only adds a file or a version, and delete_tab
+      // deletes files only together with their tab.
+      const uploads = mayDo(role, "editFile") ? ["get_file_upload_link"] : [];
       const withFile = tools.filter((tool) => Object.keys(tool.inputSchema.properties ?? {}).includes("file"));
-      expect(withFile.map((tool) => tool.name)).toEqual(["read_file", "get_file_download_link"]);
+      expect(withFile.map((tool) => tool.name)).toEqual(["read_file", "get_file_download_link", ...uploads]);
       for (const tool of withFile) {
-        expect(tool.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+        expect(tool.annotations).toMatchObject({
+          readOnlyHint: tool.name !== "get_file_upload_link",
+          destructiveHint: false,
+        });
       }
-      expect(tools.filter((tool) => /file/u.test(tool.name)).map((tool) => tool.name)).toEqual([
+      expect(tools.filter((tool) => /file|upload/u.test(tool.name)).map((tool) => tool.name)).toEqual([
         "read_file",
         "get_file_download_link",
+        ...uploads,
       ]);
     },
   );
@@ -2300,16 +2654,19 @@ describe("the hint on the addresses", () => {
 
   it("ends the description of every address field of every tool of a Manager connection, after what it says of its item", async () => {
     const schemas = await outputSchemas();
-    expect(schemas.size).toBe(13);
+    expect(schemas.size).toBe(14);
 
     const addresses = [...schemas].flatMap(([tool, schema]) =>
       fieldsOf(schema)
         .filter(([name]) => name === "address" || name.endsWith("Address"))
         .map(([name, field]) => [tool, name, field.description ?? ""] as const),
     );
-    // Every tool returns at least one address: of a page, a file, a tab, the folder or the deleted items. The one
-    // exception is get_file_download_link, whose link is for downloading, not for people, and has no hint.
-    const withAddresses = [...schemas.keys()].filter((tool) => tool !== "get_file_download_link");
+    // Every tool returns at least one address: of a page, a file, a tab, the folder or the deleted items. The
+    // exceptions are get_file_download_link and get_file_upload_link, whose links are for downloading and uploading,
+    // not for people, and have no hint.
+    const withAddresses = [...schemas.keys()].filter(
+      (tool) => tool !== "get_file_download_link" && tool !== "get_file_upload_link",
+    );
     expect(new Set(addresses.map(([tool]) => tool))).toEqual(new Set(withAddresses));
     for (const [tool, name, description] of addresses) {
       expect(description, `${tool}: ${name}`).toMatch(/^Where a person (opens|with a role|sees) .+\. /);
@@ -2464,11 +2821,18 @@ describe("a name of an existing tab or page", () => {
     ],
     ["rename_tab", (name) => ({ tab: name, newName: "news" }), "tab", (name) => `There is no tab named "${name}"`],
     ["delete_tab", (name) => ({ tab: name }), "tab", (name) => `There is no tab named "${name}"`],
+    [
+      "get_file_upload_link",
+      (name) => ({ tab: name, file: "diagram.png", size: 100 }),
+      "tab",
+      (name) => `There is no tab named "${name}"`,
+    ],
   ];
 
   beforeEach(() => {
     actor = MANAGER;
     // As the services answer a name that no item has.
+    mocks.getFolderByName.mockResolvedValue({ ...FOLDER, role: "manager" });
     mocks.getPage.mockResolvedValue(PAGE);
     mocks.getTab.mockResolvedValue({ id: "tab-1", name: "guides", folder: FOLDER, role: "manager" });
   });
@@ -2516,9 +2880,10 @@ describe("every tool", () => {
   const FILE = fileWithPlace("diagram.png", null);
   const READ_FAILED = "The wiki could not be read. Please try again later.";
   const WRITE_FAILED = "The change could not be stored. Please try again later.";
+  const UPLOAD_LINK_FAILED = "The upload link could not be made. Please try again later.";
 
   /**
-   * Each of the thirteen tools, called by a Manager connection, which has all of them: its arguments, the service it
+   * Each of the fourteen tools, called by a Manager connection, which has all of them: its arguments, the service it
    * calls, and the message of a failure of that service.
    */
   const TOOLS = [
@@ -2546,6 +2911,7 @@ describe("every tool", () => {
       mocks.moveOrRenamePage,
       WRITE_FAILED,
     ],
+    ["get_file_upload_link", { file: "diagram.png", size: 100 }, mocks.checkUploadName, UPLOAD_LINK_FAILED],
     ["delete_page", { page: "setup", version: 4 }, mocks.deletePage, WRITE_FAILED],
     ["create_tab", { name: "news" }, mocks.createTab, WRITE_FAILED],
     ["rename_tab", { tab: "guides", newName: "news" }, mocks.renameTab, WRITE_FAILED],
@@ -2564,6 +2930,7 @@ describe("every tool", () => {
     replace_page_content: { page: "setup" },
     edit_page_content: { page: "setup" },
     move_or_rename_page: { page: "setup", newTab: null, newName: "moved" },
+    get_file_upload_link: { file: "diagram.png" },
     delete_page: { page: "setup" },
     create_tab: { name: "news" },
     rename_tab: { tab: "guides", newName: "news" },
@@ -2590,6 +2957,8 @@ describe("every tool", () => {
     mocks.getTab.mockResolvedValue(TAB);
     mocks.getFile.mockResolvedValue(FILE);
     mocks.getCurrentFileVersion.mockResolvedValue(currentVersionOf("diagram.png", null));
+    mocks.getFolderByName.mockResolvedValue({ ...FOLDER, role: "manager" });
+    mocks.checkUploadName.mockResolvedValue({ ok: true, value: null });
     mocks.createPage.mockResolvedValue({ ok: true, value: { ...STORED, name: "new", version: 1 } });
     mocks.updatePageContent.mockResolvedValue({ ok: true, value: STORED });
     mocks.moveOrRenamePage.mockResolvedValue({ ok: true, value: { ...STORED, name: "moved", updatedPages: [] } });
