@@ -521,6 +521,26 @@ export function fileContentPath(
   return query.length === 0 ? path : `${path}?${query.join("&")}`;
 }
 
+/** The query of a file address that carries the token of a signed link to the file. */
+export const FILE_LINK_TOKEN_PARAM = "token";
+
+/**
+ * The address of a file with the token of a signed link, which downloads its current version without a login for a
+ * few minutes: `/files/<folder>/[<tab>/]<name.ext>?token=<token>`. The token is of the alphabet of base64url and a dot,
+ * so it needs no encoding.
+ */
+export function fileLinkPath(folder: string, tab: string | null, name: string, token: string): string {
+  return `${placedFilePath(FILES_PATH, folder, tab, name)}?${FILE_LINK_TOKEN_PARAM}=${token}`;
+}
+
+/**
+ * Whether a request is a read of a file by a signed link: an address below `/files/` whose query has `token`. Only
+ * whether the query is there; the route of the file checks the token and the rest of the query.
+ */
+export function isFileLinkRequest(path: string, query: URLSearchParams): boolean {
+  return path.startsWith(`${FILES_PATH}/`) && query.has(FILE_LINK_TOKEN_PARAM);
+}
+
 /**
  * The address that a file is uploaded to, as the body of a `POST`: `/api/uploads/<folder>/[<tab>/]<name.ext>`; with
  * `keepMetadata`, `strip=0`, which keeps the metadata of a photo, and with `replace`, the lock version of the file of

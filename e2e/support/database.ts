@@ -3,7 +3,7 @@
 // ./workers.ts); the helpers here use the database of the worker of the process, and `hippowiki_test` outside a
 // worker, i.e. in the global setup and in the integration tests.
 import { execFileSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -101,10 +101,12 @@ export async function disconnectTestDb(): Promise<void> {
 }
 
 /**
- * The tables that are never emptied: the migration history, and the secret of the session cookies, which the running
- * server keeps for its whole life. Without the secret every session cookie of the run would become invalid.
+ * The tables that are never emptied: the migration history, the secret of the session cookies and the key of the links
+ * to files, which the running server keeps for its whole life. Without the secret every session cookie of the run
+ * would become invalid; with a new key in the table the server would still sign with the old one, and the tokens of
+ * `signFileLinkToken()` would no longer pass.
  */
-const KEPT_TABLES = ["_prisma_migrations", "AuthSecret"];
+const KEPT_TABLES = ["_prisma_migrations", "AuthSecret", "FileLinkKey"];
 
 /**
  * The PostgreSQL errors of a `TRUNCATE` that a transaction of the server got in the way of: `40P01` when the two
@@ -666,4 +668,40 @@ export async function createGrant({
 async function createFolderOf(user: { id: string }): Promise<Folder> {
   const stored = await getTestDb().user.findUnique({ where: { id: user.id }, select: { type: true } });
   return createFolder({ roles: stored?.type === "user" ? [{ user, role: "owner" }] : [] });
+}
+
+/**
+ * The key of the links to files of the test database, as the server reads it: the stored one or, when there is none
+ * yet, a new one, stored as the links service stores it, so that the server and the tests sign with the same key.
+ */
+async function fileLinkKey(): Promise<Buffer> {
+  const db = getTestDb();
+  await db.fileLinkKey.createMany({ data: [{ id: 1, secret: randomBytes(32).toString("hex") }], skipDuplicates: true });
+  const { secret } = await db.fileLinkKey.findUniqueOrThrow({ where: { id: 1 }, select: { secret: true } });
+  return Buffer.from(secret, "hex");
+}
+
+/**
+ * The token of a signed link to a file, as `get_file_download_link` makes it (`src/features/files/link-token.ts`),
+ * signed with the key of the test database: the data of the link to the version for the grant, expiring at `exp`
+ * (whole seconds since 1970, by default ten minutes from now), with `changes` applied to the data, a field set to
+ * `undefined` left out, to make a token that the server refuses although it is signed correctly.
+ */
+export async function signFileLinkToken({
+  grant,
+  version,
+  exp = Math.floor(Date.now() / 1000) + 600,
+  changes = {},
+}: {
+  grant: string;
+  version: string;
+  exp?: number;
+  changes?: Record<string, unknown>;
+}): Promise<string> {
+  const data = { use: "file-link", v: 1, grant, version, exp, ...changes };
+  const dataPart = Buffer.from(JSON.stringify(data)).toString("base64url");
+  const signature = createHmac("sha256", await fileLinkKey())
+    .update(dataPart)
+    .digest("base64url");
+  return `${dataPart}.${signature}`;
 }

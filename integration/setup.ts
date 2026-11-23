@@ -21,6 +21,8 @@ const filesDir = mkdtempSync(join(tmpdir(), "hippowiki-integration-files-"));
 mkdirSync(join(filesDir, "tmp"));
 process.env.HIPPOWIKI_TEST_FILES_DIR = filesDir;
 delete (globalThis as { hippowikiFileStore?: unknown }).hippowikiFileStore;
+// The key of the links to files is kept in memory like the store; it is read again from the database of the file.
+delete (globalThis as { hippowikiFileLinkKey?: unknown }).hippowikiFileLinkKey;
 
 vi.mock("@/lib/db", async () => {
   const { getTestDb } = await import("../e2e/support/database");

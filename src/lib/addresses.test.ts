@@ -13,7 +13,9 @@ import {
   deletedItemsPath,
   deletedItemsRootPath,
   fileContentPath,
+  fileLinkPath,
   filePath,
+  isFileLinkRequest,
   parseFileSegment,
   parseUploadName,
   uploadFilePath,
@@ -171,6 +173,23 @@ describe("paths", () => {
     expect(fileContentPath("handbook", null, "manual.pdf", { version: 1, download: true })).toBe(
       "/files/handbook/manual.pdf?version=1&download",
     );
+  });
+
+  it("builds the address of a file with the token of a signed link as its only query", () => {
+    expect(fileLinkPath("handbook", null, "diagram.png", "abc.def")).toBe("/files/handbook/diagram.png?token=abc.def");
+    expect(fileLinkPath("handbook", "guides", "manual.pdf", "a-b_c.d")).toBe(
+      "/files/handbook/guides/manual.pdf?token=a-b_c.d",
+    );
+  });
+
+  it("tells a read of a file by a signed link by the query token below /files/", () => {
+    const query = (value: string) => new URLSearchParams(value);
+    expect(isFileLinkRequest("/files/handbook/diagram.png", query("token=x"))).toBe(true);
+    expect(isFileLinkRequest("/files/handbook/guides/diagram.png", query("token=&download"))).toBe(true);
+    expect(isFileLinkRequest("/files/handbook/diagram.png", query("download"))).toBe(false);
+    expect(isFileLinkRequest("/folders/handbook/diagram.png", query("token=x"))).toBe(false);
+    expect(isFileLinkRequest("/files", query("token=x"))).toBe(false);
+    expect(isFileLinkRequest("/filesx/a.png", query("token=x"))).toBe(false);
   });
 
   it("builds the upload address of a file, with the metadata kept and as a new version", () => {

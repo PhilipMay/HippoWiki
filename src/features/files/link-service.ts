@@ -1,5 +1,12 @@
-// The signed links to files that AI apps get through MCP: the key that signs them. A link carries everything needed to
-// check it (`link-token.ts`), so handing one out stores nothing and nothing is cleaned up.
+// The signed links to files that AI apps get through MCP: the key that signs them, and the read of a file by a link.
+// A link carries everything needed to check it (`link-token.ts`), so handing one out stores nothing and nothing is
+// cleaned up.
+//
+// A link follows the access of its connected app: it reads the file with the actor of MCP of its grant, so it passes
+// only while the grant is accepted at its MCP address (`callerOfGrant()` of the grants service), only in the folder of
+// the grant and with the lower of the role of the grant and the role of its user. It names the version of the file
+// that was current when it was made, which never repeats, so a new version, a revert, a move, a rename and a delete
+// each end it; a restore to the same place brings it back. The token of a link is never logged.
 //
 // The key is a key of its own, not the secret of the session cookies, so that a new key for the links logs nobody out.
 // It is kept in the single row of `FileLinkKey`, generated on first use, so that all processes sign with the same key.
@@ -7,7 +14,14 @@
 
 import { randomBytes } from "node:crypto";
 
+import { inMcp } from "@/features/folder-roles/actors";
+import { checkLinkToken, isWithinLifetime } from "@/features/files/link-token";
+import { getFileContent, type FileContent } from "@/features/files/service";
+import { getStore } from "@/features/files/store";
+import { callerOfGrant, type McpCaller } from "@/features/grants/service";
 import { getDb } from "@/lib/db";
+import { getServerEnv } from "@/lib/env";
+import { logger } from "@/lib/logger";
 
 /** The id of the one row of `FileLinkKey`. */
 const KEY_ROW_ID = 1;
@@ -51,4 +65,60 @@ export function getLinkKey(): Promise<Buffer> {
 /** Forgets the key in memory, as a restart of the server does; for the tests. */
 export function forgetLinkKey(): void {
   globalForLinks.hippowikiFileLinkKey = undefined;
+}
+
+/** The current time. The one place the service takes it from, so that tests can set the clock. */
+function currentTime(): Date {
+  return new Date();
+}
+
+/** The content of a file read by a signed link, and who the link acts for: the user and the connection of its grant. */
+export type LinkedFileContent = { content: FileContent; caller: McpCaller };
+
+/**
+ * The content of the current version of the file of the given name at the place, read with the token of a signed link
+ * instead of a session, or `null`. The checks run in this order, and each failure is logged with its reason and
+ * without the token: the token itself, its shape, signature and data (`warn`, because only a broken or forged link
+ * fails them), then its expiry against the lifetime of the server, the grant, whether the files are on, the file at
+ * the place, read as the connected app would, and its current version against the version of the link (`info`,
+ * because a link that no longer passes is expected).
+ */
+export async function getLinkedFileContent(
+  token: string,
+  folderName: string,
+  tabName: string | null,
+  fileName: string,
+): Promise<LinkedFileContent | null> {
+  const checked = checkLinkToken(await getLinkKey(), token);
+  if (!checked.ok) {
+    logger.warn({ reason: checked.reason }, "file link refused");
+    return null;
+  }
+  const { grant: grantId, version: versionId, exp } = checked.data;
+  if (!isWithinLifetime(exp, currentTime(), getServerEnv().HIPPOWIKI_FILE_LINK_LIFETIME)) {
+    logger.info({ reason: "expired", grantId, exp }, "file link refused");
+    return null;
+  }
+  const caller = await callerOfGrant(grantId);
+  if (!caller) {
+    logger.info({ reason: "grant", grantId }, "file link refused");
+    return null;
+  }
+  // Without a usable files directory no content can be read; the link answers as a missing file does.
+  if (!(await getStore()).on) {
+    logger.info({ reason: "files-off", grantId }, "file link refused");
+    return null;
+  }
+  const place = { folder: folderName, tab: tabName, name: fileName };
+  const content = await getFileContent(inMcp(caller.actor, caller.connection), folderName, tabName, fileName, null);
+  if (!content) {
+    logger.info({ reason: "file", grantId, ...place }, "file link refused");
+    return null;
+  }
+  if (content.version.id !== versionId) {
+    await content.blob.stream.cancel();
+    logger.info({ reason: "version", grantId, ...place, version: content.version.number }, "file link refused");
+    return null;
+  }
+  return { content, caller };
 }

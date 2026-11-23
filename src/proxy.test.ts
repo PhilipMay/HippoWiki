@@ -89,6 +89,43 @@ describe("proxy", () => {
     expect(response.headers.get("location")).toBeNull();
   });
 
+  it.each(["GET", "HEAD"])("lets a %s of a file address with token pass without a session cookie", (method) => {
+    for (const address of [
+      "/files/handbook/diagram.png?token=abc.def",
+      "/files/handbook/guides/manual.pdf?token=abc.def&download",
+      "/files/handbook/diagram.png?download&token=",
+    ]) {
+      const response = proxy(new NextRequest(`http://localhost:3000${address}`, { method }));
+
+      expect(response.headers.get("x-middleware-next"), address).toBe("1");
+      expect(response.headers.get("location"), address).toBeNull();
+    }
+  });
+
+  it("sends a POST of a file address with token to the login page as before", () => {
+    const response = proxy(
+      new NextRequest("http://localhost:3000/files/handbook/diagram.png?token=abc.def", { method: "POST" }),
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("http://localhost:3000/login");
+  });
+
+  it.each([
+    [
+      "a file address without token",
+      "/files/handbook/diagram.png?download",
+      "%2Ffiles%2Fhandbook%2Fdiagram.png%3Fdownload",
+    ],
+    ["another address with token", "/folders/handbook?token=abc.def", "%2Ffolders%2Fhandbook%3Ftoken%3Dabc.def"],
+    ["the address /files with token", "/files?token=abc.def", "%2Ffiles%3Ftoken%3Dabc.def"],
+  ])("sends a GET of %s without a session cookie to the login page as before", (_case, address, next) => {
+    const response = proxy(new NextRequest(`http://localhost:3000${address}`));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(`http://localhost:3000/login?next=${next}`);
+  });
+
   it("hands a request with a session cookie to the probe and lets it pass", () => {
     const request = new NextRequest("http://localhost:3000/folders", {
       method: "POST",

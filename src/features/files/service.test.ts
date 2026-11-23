@@ -91,6 +91,7 @@ import {
 
 const DIR = "/srv/files";
 const SHA = "a".repeat(64);
+const VERSION_ID = "5e7a9c1b-3d5f-4a7c-9e1b-3d5f7a9c1b20";
 const PROCESSED_SHA = "b".repeat(64);
 const PNG_HEAD = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
 const PDF_HEAD = new TextEncoder().encode("%PDF-1.7\n%..");
@@ -886,7 +887,7 @@ describe("the reads of files", () => {
     mocks.fileFindFirst.mockResolvedValue({
       name: "diagram.png",
       type: "png",
-      versions: [{ number: 1, sha256: SHA, size: 10 }],
+      versions: [{ id: VERSION_ID, number: 1, sha256: SHA, size: 10 }],
     });
     mocks.getStore.mockResolvedValueOnce({ on: false, reason: "not-set", dir: null });
     await expect(fileService.getFileContent(ACTOR, "handbook", null, "diagram.png", null)).resolves.toBeNull();
@@ -900,7 +901,7 @@ describe("the reads of files", () => {
     await expect(fileService.getFileContent(ACTOR, "handbook", null, "diagram.png", 1)).resolves.toEqual({
       name: "diagram.png",
       type: "png",
-      version: { number: 1, sha256: SHA, size: 10 },
+      version: { id: VERSION_ID, number: 1, sha256: SHA, size: 10 },
       blob,
     });
     expect(mocks.readBlob).toHaveBeenLastCalledWith(DIR, SHA);

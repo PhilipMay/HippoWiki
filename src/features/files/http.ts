@@ -9,6 +9,12 @@
 // from an address whether a file exists. The role is checked on every request, and every answer asks the browser to
 // check again before it uses a copy, so that a removed role ends the access with the next request.
 //
+// A `GET` or `HEAD` of the file address with the query `token` is a download by a signed link, which an AI app got
+// through MCP (`link-service.ts`); the proxy lets it pass without a session cookie. It is checked by the token alone,
+// with or without a session, and the session is not read; besides `token` its query may hold only `download`. Every
+// failure answers the same not-found page as a file that does not exist, and the answer asks every cache not to keep a
+// copy. The token is never logged.
+//
 // The upload address is left out of the proxy, because the proxy would buffer at most 10 MB of a body and cut the rest
 // (`experimental.proxyClientMaxBodySize`). It checks the session itself, refuses a request from another site (an
 // `Origin` other than the own, or `Sec-Fetch-Site: cross-site`), a user with the first password, an admin and a user
@@ -17,6 +23,7 @@
 import { notFound } from "next/navigation";
 
 import { getCurrentUser } from "@/features/auth/session";
+import * as linkService from "@/features/files/link-service";
 import { inBrowser, type BrowserActor } from "@/features/folder-roles/actors";
 import {
   FOLDER_GONE_MESSAGE,
@@ -30,7 +37,7 @@ import { parseNumberParam } from "@/features/files/schema";
 import * as fileService from "@/features/files/service";
 import { ACCEPTED_TYPES_MESSAGE, FILE_TYPES } from "@/features/files/types";
 import * as folderService from "@/features/folders/service";
-import { filePath } from "@/lib/addresses";
+import { FILE_LINK_TOKEN_PARAM, filePath } from "@/lib/addresses";
 import { getServerEnv } from "@/lib/env";
 import { formatBytes } from "@/lib/format";
 import { logger } from "@/lib/logger";
@@ -78,15 +85,59 @@ function matchesEntityTag(request: Request, entityTag: string): boolean {
 }
 
 /**
- * Answers a `GET` or `HEAD` of the file address with the content of the file: the type decided at the upload, the
- * name in `Content-Disposition` (`inline`, or `attachment` with `?download`), `Cache-Control: private, no-cache` and the
- * SHA-256 as `ETag`, with 304 for a matching `If-None-Match`. The headers that run nothing in a file come from
- * `next.config.ts`. Everything else shows the not-found page.
+ * The query of a download by a signed link: exactly one `token`, and at most one `download` without a value; `null`
+ * for anything else, `version` included, because a link downloads only the version it names.
+ */
+function fileLinkQuery(url: URL): { token: string; download: boolean } | null {
+  const keys = [...url.searchParams.keys()];
+  if (keys.some((key) => key !== FILE_LINK_TOKEN_PARAM && key !== "download")) return null;
+  const tokens = url.searchParams.getAll(FILE_LINK_TOKEN_PARAM);
+  const downloads = url.searchParams.getAll("download");
+  const token = tokens[0];
+  if (tokens.length !== 1 || token === undefined) return null;
+  if (downloads.length > 1 || downloads.some((value) => value !== "")) return null;
+  return { token, download: downloads.length === 1 };
+}
+
+/**
+ * The answer with the content of a file: the type decided at the upload, the name in `Content-Disposition` (`inline`,
+ * or `attachment` for a download), the caching and the SHA-256 as `ETag`, with 304 for a matching `If-None-Match` and
+ * no content for `HEAD`. The headers that run nothing in a file come from `next.config.ts`.
+ */
+async function contentResponse(
+  request: Request,
+  content: fileService.FileContent,
+  { download, cacheControl }: { download: boolean; cacheControl: string },
+): Promise<Response> {
+  const entityTag = `"${content.version.sha256}"`;
+  const headers = new Headers({ "Cache-Control": cacheControl, ETag: entityTag });
+  if (matchesEntityTag(request, entityTag)) {
+    await content.blob.stream.cancel();
+    return new Response(null, { status: 304, headers });
+  }
+  headers.set("Content-Type", FILE_TYPES[content.type].mimeType);
+  headers.set("Content-Length", String(content.version.size));
+  headers.set("Content-Disposition", `${download ? "attachment" : "inline"}; filename="${content.name}"`);
+  if (request.method === "HEAD") {
+    await content.blob.stream.cancel();
+    return new Response(null, { status: 200, headers });
+  }
+  return new Response(content.blob.stream, { status: 200, headers });
+}
+
+/**
+ * Answers a `GET` or `HEAD` of the file address with the content of the file, `Cache-Control: private, no-cache`, so
+ * that the browser checks the role again before it uses a copy. With the query `token` it is a download by a signed
+ * link instead (`handleFileLinkRequest()`). Everything else shows the not-found page.
  */
 export async function handleFileRequest(request: Request, segments: FileSegments): Promise<Response> {
+  const url = new URL(request.url);
+  // Decided by the query alone, before the session is read: a request with a token is checked by the token only.
+  if (url.searchParams.has(FILE_LINK_TOKEN_PARAM)) return handleFileLinkRequest(request, segments, url);
+
   const actor = await sessionActor();
   const place = placeOf(segments);
-  const query = fileQuery(new URL(request.url));
+  const query = fileQuery(url);
   if (!actor || !place || !query) notFound();
 
   const content = await fileService.getFileContent(actor, place.folder, place.tab, place.name, query.version);
@@ -95,24 +146,51 @@ export async function handleFileRequest(request: Request, segments: FileSegments
     notFound();
   }
 
-  const entityTag = `"${content.version.sha256}"`;
-  const headers = new Headers({
-    "Cache-Control": "private, no-cache",
-    ETag: entityTag,
+  const response = await contentResponse(request, content, {
+    download: query.download,
+    cacheControl: "private, no-cache",
   });
-  if (matchesEntityTag(request, entityTag)) {
-    await content.blob.stream.cancel();
-    return new Response(null, { status: 304, headers });
+  if (request.method !== "HEAD" && response.status === 200) {
+    logger.debug({ actorId: actor.id, ...place, version: content.version.number }, "file sent");
   }
-  headers.set("Content-Type", FILE_TYPES[content.type].mimeType);
-  headers.set("Content-Length", String(content.version.size));
-  headers.set("Content-Disposition", `${query.download ? "attachment" : "inline"}; filename="${content.name}"`);
-  if (request.method === "HEAD") {
-    await content.blob.stream.cancel();
-    return new Response(null, { status: 200, headers });
+  return response;
+}
+
+/**
+ * Answers a download by a signed link: the current version of the file, if the token is valid for it
+ * (`getLinkedFileContent()` of the links service), with `Cache-Control: private, no-store`, so that no cache of a
+ * browser or a proxy keeps a copy. Every `GET` and `HEAD` that sends the file is logged at `info` with the grant, the
+ * user, the place and the version, because whoever holds the link may download; every failure answers the not-found
+ * page of a missing file. Neither the last use of the grant nor the rate limit of MCP is touched.
+ */
+async function handleFileLinkRequest(request: Request, segments: FileSegments, url: URL): Promise<Response> {
+  const place = placeOf(segments);
+  const query = fileLinkQuery(url);
+  if (!place || !query) {
+    logger.info({ reason: "address" }, "file link refused");
+    notFound();
   }
-  logger.debug({ actorId: actor.id, ...place, version: content.version.number }, "file sent");
-  return new Response(content.blob.stream, { status: 200, headers });
+
+  const linked = await linkService.getLinkedFileContent(query.token, place.folder, place.tab, place.name);
+  if (!linked) notFound();
+
+  const { content, caller } = linked;
+  const response = await contentResponse(request, content, {
+    download: query.download,
+    cacheControl: "private, no-store",
+  });
+  logger.info(
+    {
+      grantId: caller.connection.grantId,
+      userId: caller.actor.id,
+      ...place,
+      version: content.version.number,
+      method: request.method,
+      status: response.status,
+    },
+    "file sent by link",
+  );
+  return response;
 }
 
 /** The host names that the page of an upload may be served from: the host of the request and the public URL. */

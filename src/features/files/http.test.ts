@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
   getFileContent: vi.fn(),
+  getLinkedFileContent: vi.fn(),
   uploadFile: vi.fn(),
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
   getFolderByName: vi.fn(),
   getTab: vi.fn(),
   revalidateContent: vi.fn(),
@@ -22,7 +27,10 @@ vi.mock("@/features/auth/session", () => ({ getCurrentUser: mocks.getCurrentUser
 vi.mock("@/features/files/service", () => ({ getFileContent: mocks.getFileContent, uploadFile: mocks.uploadFile }));
 vi.mock("@/features/folders/service", () => ({ getFolderByName: mocks.getFolderByName, getTab: mocks.getTab }));
 vi.mock("@/lib/revalidate", () => ({ revalidateContent: mocks.revalidateContent }));
-vi.mock("@/lib/logger", () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock("@/features/files/link-service", () => ({ getLinkedFileContent: mocks.getLinkedFileContent }));
+vi.mock("@/lib/logger", () => ({
+  logger: { debug: mocks.debug, info: mocks.info, warn: mocks.warn, error: mocks.error },
+}));
 vi.mock("@/lib/env", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/env")>()),
   getServerEnv: () => ({ HIPPOWIKI_PUBLIC_URL: mocks.publicUrl }),
@@ -33,6 +41,7 @@ import { ACTOR_ID, FOLDER_ID, NotFoundError, TAB_ID } from "@/test/unit";
 
 const USER = { id: ACTOR_ID, name: "alice", type: "user", mustChangePassword: false };
 const SHA = "c".repeat(64);
+const VERSION_ID = "5e7a9c1b-3d5f-4a7c-9e1b-3d5f7a9c1b20";
 const BYTES = new Uint8Array([1, 2, 3, 4]);
 
 /** The content of a file as the service returns it, with a stream of the bytes. */
@@ -40,7 +49,7 @@ function content(type = "png", name = "diagram.png") {
   return {
     name,
     type,
-    version: { number: 2, sha256: SHA, size: BYTES.length },
+    version: { id: VERSION_ID, number: 2, sha256: SHA, size: BYTES.length },
     blob: { size: BYTES.length, stream: new Response(BYTES).body },
   };
 }
@@ -157,6 +166,143 @@ describe("handleFileRequest", () => {
       handleFileRequest(fileRequest(), { folder: "handbook", path: ["guides", "more", "diagram.png"] }),
     ).rejects.toBeInstanceOf(NotFoundError);
     expect(mocks.getFileContent).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleFileRequest with the token of a signed link", () => {
+  /** A token as the tests use it; the service is mocked, so only its spelling matters. */
+  const TOKEN = `${"d".repeat(160)}.${"s".repeat(43)}`;
+  const GRANT_ID = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
+  /** The content and the caller of a link as the links service returns them. */
+  function linked(type = "png", name = "diagram.png") {
+    return {
+      content: content(type, name),
+      caller: {
+        actor: { id: ACTOR_ID, name: "alice", type: "user" },
+        connection: { grantId: GRANT_ID, folderId: FOLDER_ID, role: "reader" },
+      },
+    };
+  }
+
+  /** Everything that was passed to the logger, as one string. */
+  function logged(): string {
+    return JSON.stringify([
+      mocks.debug.mock.calls,
+      mocks.info.mock.calls,
+      mocks.warn.mock.calls,
+      mocks.error.mock.calls,
+    ]);
+  }
+
+  beforeEach(() => {
+    mocks.getLinkedFileContent.mockResolvedValue(linked());
+  });
+
+  it("sends the current version, checked by the token alone, without reading the session", async () => {
+    const response = await handleFileRequest(fileRequest(`?token=${TOKEN}`), SEGMENTS);
+
+    expect(response.status).toBe(200);
+    expect(Object.fromEntries(response.headers)).toEqual({
+      "cache-control": "private, no-store",
+      "content-disposition": 'inline; filename="diagram.png"',
+      "content-length": "4",
+      "content-type": "image/png",
+      etag: `"${SHA}"`,
+    });
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(BYTES);
+    expect(mocks.getLinkedFileContent).toHaveBeenCalledExactlyOnceWith(TOKEN, "handbook", "guides", "diagram.png");
+    expect(mocks.getCurrentUser).not.toHaveBeenCalled();
+    expect(mocks.getFileContent).not.toHaveBeenCalled();
+  });
+
+  it("sends a PDF as an attachment with download", async () => {
+    mocks.getLinkedFileContent.mockResolvedValue(linked("pdf", "manual.pdf"));
+
+    const response = await handleFileRequest(fileRequest(`?token=${TOKEN}&download`), {
+      folder: "handbook",
+      path: ["manual.pdf"],
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/pdf");
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="manual.pdf"');
+    expect(mocks.getLinkedFileContent).toHaveBeenCalledWith(TOKEN, "handbook", null, "manual.pdf");
+  });
+
+  it("answers HEAD with the headers and no content", async () => {
+    const response = await handleFileRequest(fileRequest(`?token=${TOKEN}`, "HEAD"), SEGMENTS);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("content-length")).toBe("4");
+    expect(await response.text()).toBe("");
+  });
+
+  it.each(["GET", "HEAD"])(
+    "logs a %s that sends the file once at info with the grant, the user, the place and the version",
+    async (method) => {
+      await handleFileRequest(fileRequest(`?token=${TOKEN}`, method), SEGMENTS);
+
+      expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+        {
+          grantId: GRANT_ID,
+          userId: ACTOR_ID,
+          folder: "handbook",
+          tab: "guides",
+          name: "diagram.png",
+          version: 2,
+          method,
+          status: 200,
+        },
+        "file sent by link",
+      );
+      expect(logged()).not.toContain(TOKEN.slice(0, 20));
+      expect(logged()).not.toContain(TOKEN.slice(-20));
+    },
+  );
+
+  it.each([
+    "&version=1",
+    "&version=2",
+    `&token=${TOKEN}`,
+    "&download=1",
+    "&download&download",
+    "&v=1",
+    "&next=/folders",
+  ])("shows the not-found page for the token with %s, without checking the token", async (rest) => {
+    await expect(handleFileRequest(fileRequest(`?token=${TOKEN}${rest}`), SEGMENTS)).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+    expect(mocks.getLinkedFileContent).not.toHaveBeenCalled();
+    expect(mocks.getCurrentUser).not.toHaveBeenCalled();
+    expect(logged()).not.toContain(TOKEN.slice(0, 20));
+  });
+
+  it("shows the not-found page for a link to an address with more segments", async () => {
+    await expect(
+      handleFileRequest(fileRequest(`?token=${TOKEN}`), { folder: "handbook", path: ["guides", "more", "x.png"] }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(mocks.getLinkedFileContent).not.toHaveBeenCalled();
+  });
+
+  it("shows the not-found page for an invalid token, also with the session of a user who may read the file, and does not read the session", async () => {
+    mocks.getLinkedFileContent.mockResolvedValue(null);
+
+    await expect(handleFileRequest(fileRequest("?token=invalid"), SEGMENTS)).rejects.toBeInstanceOf(NotFoundError);
+
+    expect(mocks.getCurrentUser).not.toHaveBeenCalled();
+    expect(mocks.getFileContent).not.toHaveBeenCalled();
+  });
+
+  it("answers every refusal of the links service as a file that does not exist", async () => {
+    mocks.getLinkedFileContent.mockResolvedValue(null);
+    const byLink = handleFileRequest(fileRequest(`?token=${TOKEN}`), SEGMENTS);
+    mocks.getFileContent.mockResolvedValue(null);
+    const missing = handleFileRequest(fileRequest(), SEGMENTS);
+
+    await expect(byLink).rejects.toBeInstanceOf(NotFoundError);
+    await expect(missing).rejects.toBeInstanceOf(NotFoundError);
+    expect(mocks.info).not.toHaveBeenCalled();
   });
 });
 

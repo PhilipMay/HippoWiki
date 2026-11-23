@@ -134,11 +134,14 @@ export type StoredFile = {
   tab: { name: string } | null;
 };
 
-/** The content of a version of a file, as its address sends it. */
+/**
+ * The content of a version of a file, as its address sends it. The id of the version is what a signed link names
+ * (`link-service.ts`); the address itself sends only its number, SHA-256 and size.
+ */
 export type FileContent = {
   name: string;
   type: FileType;
-  version: { number: number; sha256: string; size: number };
+  version: { id: string; number: number; sha256: string; size: number };
   blob: OpenBlob;
 };
 
@@ -428,7 +431,7 @@ export async function getFileContent(
       name: true,
       type: true,
       versions: {
-        select: { number: true, sha256: true, size: true },
+        select: { id: true, number: true, sha256: true, size: true },
         where: versionNumber === null ? {} : { number: versionNumber },
         orderBy: { number: "desc" },
         take: 1,

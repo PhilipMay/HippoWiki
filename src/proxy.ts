@@ -3,12 +3,15 @@
 // there and does not ask the database. Whether the cookie belongs to a session is checked by `requireUser()` in every
 // page, every query and every Server Action (`src/features/auth/session.ts`), which is the layer that protects the
 // data. A read that is sent to the login page takes its own address along as `next`, the way back after the login.
+// One read passes without a cookie: a `GET` or `HEAD` of a file address with the query `token`, a download by a signed
+// link that an AI app got through MCP. Here too the proxy only looks whether the query is there; the route of the file
+// checks the token and answers every failure with a plain 404 (`src/features/files/http.ts`).
 // With `HIPPOWIKI_LOG_CLIENT_ADDRESS=true` it also logs the forwarding headers of every request it sees
 // (`src/lib/client-address-probe.ts`).
 import { getSessionCookie } from "better-auth/cookies";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { loginPath } from "@/lib/addresses";
+import { isFileLinkRequest, loginPath } from "@/lib/addresses";
 import { logClientAddressProbe } from "@/lib/client-address-probe";
 
 /** The request header with which the client of Next.js calls a Server Action. */
@@ -27,6 +30,10 @@ export function proxy(request: NextRequest): NextResponse {
   // The helper of Better Auth knows the name of the cookie, with and without the prefix of `Secure` cookies.
   if (getSessionCookie(request)) return NextResponse.next();
 
+  // A download by a signed link, checked by its route. Only a read: a `POST` with the query goes to the login page.
+  const isRead = request.method === "GET" || request.method === "HEAD";
+  if (isRead && isFileLinkRequest(request.nextUrl.pathname, request.nextUrl.searchParams)) return NextResponse.next();
+
   // A Server Action that the client of Next.js calls, e.g. a form submitted after a logout in another tab. The client
   // does not follow an HTTP redirect here: it would show the error page. It is answered the way Next.js itself
   // answers an action that redirects to another site: no content, and the address in a header, which the client
@@ -37,7 +44,7 @@ export function proxy(request: NextRequest): NextResponse {
 
   // A read comes back to its address after the login. Next.js has already taken its own search parameters, such as
   // the one of a client-side navigation, off the address.
-  if (request.method === "GET" || request.method === "HEAD") {
+  if (isRead) {
     const next = request.nextUrl.pathname + request.nextUrl.search;
     return NextResponse.redirect(new URL(loginPath(next), request.url), 307);
   }
@@ -56,6 +63,8 @@ export const config = {
   // - what an OAuth client calls before it has a token: the metadata of the authorization server and of the
   //   protected resource under `/.well-known/`, the registration `/oauth/register` and the token endpoint
   //   `/oauth/token`. The consent page `/oauth/authorize` is not public: a user approves a client only when logged in.
+  // The file addresses `/files/…` stay in the matcher, although a `GET` or `HEAD` with the query `token` passes without
+  // a cookie: the matcher sees only the path, and every other request of a file address needs a session.
   // One address behind the login is left out as well: the upload address `/api/uploads/` and every address below it,
   // because the proxy buffers at most 10 MB of the body of a request it sees and cuts the rest without an error
   // (`experimental.proxyClientMaxBodySize`, fixed at build time), so a larger upload would arrive cut. Its route

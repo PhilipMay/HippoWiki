@@ -193,6 +193,33 @@ test.describe("without a login", () => {
     expect(await getTestDb().fileVersion.count()).toBe(2);
   });
 
+  test("a GET and a HEAD of a file address with token are not sent to the login page: the file route checks the token", async ({
+    request,
+  }) => {
+    // What a valid token downloads is tested in file-download-links.spec.ts.
+    for (const address of ["/files/handbook/diagram.png?token=x.y", "/files/handbook/guides/manual.pdf?token="]) {
+      for (const method of ["GET", "HEAD"]) {
+        const response = await request.fetch(address, { method, maxRedirects: 0 });
+
+        expect(response.status(), `${method} ${address}`).toBe(404);
+        expect(response.headers().location, `${method} ${address}`).toBeUndefined();
+        expect(await response.text()).not.toContain("Secret");
+      }
+    }
+  });
+
+  test("a POST of a file address with token and a GET without it are still sent to the login page", async ({
+    request,
+  }) => {
+    const post = await request.post("/files/handbook/diagram.png?token=x.y", { maxRedirects: 0 });
+    expect(post.status()).toBe(303);
+    expect(new URL(post.headers().location ?? "", "http://localhost").pathname).toBe("/login");
+
+    const get = await request.get("/files/handbook/diagram.png?download", { maxRedirects: 0 });
+    expect(get.status()).toBe(307);
+    expect(new URL(get.headers().location ?? "", "http://localhost").pathname).toBe("/login");
+  });
+
   test("/mcp and the other addresses below it are not sent to the login page: they answer 404 themselves", async ({
     request,
   }) => {
