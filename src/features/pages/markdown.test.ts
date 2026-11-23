@@ -34,7 +34,7 @@ describe("raw HTML and unsafe addresses", () => {
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).toContain("&lt;img src=x onerror=alert(2)&gt;");
     expect(html).toContain("&lt;b&gt;bold&lt;/b&gt;");
-    expect(html).not.toMatch(/<script|<img|<b>/);
+    expect(html).not.toMatch(/<script|<img|<b>/i);
   });
 
   it("makes no link or image of an unsafe address", () => {
@@ -418,7 +418,7 @@ describe("wiki links in the page view", () => {
     });
     expect(html).toContain("&lt;b&gt;x&lt;/b&gt;");
     expect(html).toContain("&lt;img src=x&gt;");
-    expect(html).not.toMatch(/<b>|<img|<script/);
+    expect(html).not.toMatch(/<b>|<img|<script/i);
     expect(
       render("[[setup]]", {
         ...links,
