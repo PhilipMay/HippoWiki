@@ -59,6 +59,8 @@ test("renaming a file updates every page that shows or links it, says how many b
   await dialog.getByRole("button", { name: "Save" }).click();
 
   await expect(page).toHaveURL("/folders/handbook/guides/network.png");
+  await expect(page.getByLabel("Embed link", { exact: true })).toHaveValue("![[guides/network.png]]");
+  await expect(page.getByLabel("Wiki link", { exact: true })).toHaveValue("[[guides/network.png]]");
   await expect(page.getByRole("table", { name: "Versions" }).getByRole("link", { name: /^Version/ })).toHaveText([
     "Version 2",
     "Version 1",
@@ -86,6 +88,7 @@ test("moving a file from a tab into the folder puts it there, and a file without
   await dialog.getByRole("button", { name: "Save" }).click();
 
   await expect(page).toHaveURL("/folders/handbook/report.pdf");
+  await expect(page.getByLabel("Wiki link", { exact: true })).toHaveValue("[[report.pdf]]");
   // The lists of the folder and the tab follow the stored place (integration/file-service.test.ts).
   expect(await getTestDb().file.findFirstOrThrow({ where: { name: "report.pdf" } })).toMatchObject({
     folderId: handbook.id,

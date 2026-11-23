@@ -39,12 +39,14 @@ import { formatBytes, formatDateTime } from "@/lib/format";
 const PREVIEW_MAX_WIDTH = "100%";
 
 /**
- * The link to copy into a page: `![[…]]`, which shows an image, or `[[…]]`, which links a PDF, with the name and, for
- * a file in a tab, the tab before it, as the wiki links of the folder name it.
+ * The texts to copy into a page, as pairs of label and value in the order of the page: for an image the embed
+ * `![[…]]`, which shows it, then the wiki link `[[…]]`, which only links it; for a PDF only the wiki link. The target
+ * is the name and, for a file in a tab, the tab before it, as the wiki links of the folder name it.
  */
-function linkToCopy(file: FileWithPlace): string {
+function copyFieldsOf(file: FileWithPlace): [string, string][] {
   const target = file.tab ? `${file.tab.name}/${file.name}` : file.name;
-  return isImageType(file.type) ? `![[${target}]]` : `[[${target}]]`;
+  const wikiLink: [string, string] = ["Wiki link", `[[${target}]]`];
+  return isImageType(file.type) ? [["Embed link", `![[${target}]]`], wikiLink] : [wikiLink];
 }
 
 /** What the file field of "Upload new version" accepts: the extensions and the MIME type of the type of the file. */
@@ -73,7 +75,7 @@ type FileDetailsViewProps = {
 /**
  * The details page of a file: its place, a preview of an image, its type, size, width and height, the number of its
  * versions and its last change, "Open" and "Download", "Move or rename", "Delete" and "Upload new version" for
- * the roles that may, the link to copy,
+ * the roles that may, the embed and the wiki link of an image or the wiki link of a PDF to copy,
  * the pages that show or link it, and its versions, newest first, each with a link that opens it and, but for the
  * current one, "Revert" for the roles that may; with the dialog of the action on top.
  */
@@ -161,7 +163,11 @@ export default async function FileDetailsView({ file, action, version, notice, u
         </Table>
       </TableContainer>
 
-      <CopyField label="Link" value={linkToCopy(file)} />
+      <Stack spacing={2}>
+        {copyFieldsOf(file).map(([label, value]) => (
+          <CopyField key={label} label={label} value={value} />
+        ))}
+      </Stack>
 
       <LinkedFrom
         folderName={folder}

@@ -25,7 +25,7 @@ The plan is written from `spec/file-copy-links-requirements.md`.
 
 ## Checklist
 
-- [ ] Copy fields of the details page
+- [x] Copy fields of the details page
 - [ ] Wrap-up
 
 ## Copy fields of the details page

@@ -5,7 +5,7 @@ import sharp from "sharp";
 
 import { collectErrors, expectNotFound, expectNotFoundResponse } from "./support/browser";
 import { createFile, createFolder, createTab, createUser, resetTestDatabase, setOwnRole } from "./support/database";
-import { pdfBytes, pngBytes, uploadFile } from "./support/files";
+import { gifBytes, pdfBytes, pngBytes, uploadFile } from "./support/files";
 import { expect, test } from "./support/test";
 
 let handbook: Awaited<ReturnType<typeof createFolder>>;
@@ -30,7 +30,20 @@ async function details(page: Page): Promise<Record<string, string>> {
   return Object.fromEntries(entries);
 }
 
-test("the details page of an image shows its preview, its details, the link to copy and its versions", async ({
+/** The values of the textboxes of the main content that come after the table "Details", in the order of the page. */
+async function textboxesAfterDetails(page: Page): Promise<string[]> {
+  return page
+    .getByRole("main")
+    .getByRole("textbox")
+    .evaluateAll((inputs) => {
+      const details = document.querySelector('table[aria-label="Details"]');
+      return inputs
+        .filter((input) => details?.compareDocumentPosition(input) === Node.DOCUMENT_POSITION_FOLLOWING)
+        .map((input) => (input as HTMLInputElement).value);
+    });
+}
+
+test("the details page of an image shows its preview, its details, the embed and the wiki link to copy and its versions", async ({
   page,
 }) => {
   const errors = collectErrors(page);
@@ -60,7 +73,10 @@ test("the details page of an image shows its preview, its details, the link to c
     Versions: "2",
     "Last change": expect.stringMatching(/ by bob via mcp$/),
   });
-  await expect(page.getByLabel("Link", { exact: true })).toHaveValue("![[guides/diagram.png]]");
+  await expect(page.getByLabel("Embed link", { exact: true })).toHaveValue("![[guides/diagram.png]]");
+  await expect(page.getByLabel("Wiki link", { exact: true })).toHaveValue("[[guides/diagram.png]]");
+  expect(await textboxesAfterDetails(page)).toEqual(["![[guides/diagram.png]]", "[[guides/diagram.png]]"]);
+  await expect(page.getByLabel("Link", { exact: true })).toHaveCount(0);
 
   const versions = page.getByRole("table", { name: "Versions" });
   await expect(versions.getByRole("columnheader")).toHaveText(["Version", "Uploaded", "By", "Via", "Size", "Actions"]);
@@ -74,7 +90,22 @@ test("the details page of an image shows its preview, its details, the link to c
   expect(errors).toEqual([]);
 });
 
-test("the details page of a PDF has no preview and no size in pixels, and links it with [[…]]", async ({ page }) => {
+test("the details page of an image directly in the folder offers the embed link, then the wiki link", async ({
+  page,
+}) => {
+  await createFile({ folder: handbook, name: "example.gif", versions: [{ bytes: await gifBytes() }] });
+
+  await page.goto("/folders/handbook/example.gif");
+
+  await expect(page.getByLabel("Embed link", { exact: true })).toHaveValue("![[example.gif]]");
+  await expect(page.getByLabel("Wiki link", { exact: true })).toHaveValue("[[example.gif]]");
+  expect(await textboxesAfterDetails(page)).toEqual(["![[example.gif]]", "[[example.gif]]"]);
+  await expect(page.getByLabel("Link", { exact: true })).toHaveCount(0);
+});
+
+test("the details page of a PDF has no preview and no size in pixels, and offers only its wiki link", async ({
+  page,
+}) => {
   await createFile({ folder: handbook, name: "manual.pdf", versions: [{ bytes: pdfBytes() }] });
 
   await page.goto("/folders/handbook/manual.pdf");
@@ -82,7 +113,11 @@ test("the details page of a PDF has no preview and no size in pixels, and links 
   await expect(page.getByRole("main").locator("img")).toHaveCount(0);
   expect(Object.keys(await details(page))).toEqual(["Place", "Type", "Size", "Versions", "Last change"]);
   expect((await details(page)).Place).toBe("Directly in the folder handbook");
-  await expect(page.getByLabel("Link", { exact: true })).toHaveValue("[[manual.pdf]]");
+  await expect(page.getByLabel("Wiki link", { exact: true })).toHaveValue("[[manual.pdf]]");
+  await expect(page.getByRole("button", { name: "Copy wiki link" })).toBeVisible();
+  expect(await textboxesAfterDetails(page)).toEqual(["[[manual.pdf]]"]);
+  await expect(page.getByLabel("Embed link", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Link", { exact: true })).toHaveCount(0);
 });
 
 test("Open opens the address of the file in a new tab, and Download saves it under its name", async ({
@@ -111,15 +146,36 @@ test("Open opens the address of the file in a new tab, and Download saves it und
   expect(await readFile((await download.path()) ?? "")).toEqual(bytes);
 });
 
-test("the copy button copies the link of the file", async ({ page, context }) => {
+test("each copy button of an image copies the text of its own field", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await createFile({ tab: guides, name: "diagram.png" });
   await page.goto("/folders/handbook/guides/diagram.png");
+  const copyEmbed = page.getByRole("button", { name: "Copy embed link" });
+  const copyWiki = page.getByRole("button", { name: "Copy wiki link" });
 
-  await page.getByRole("button", { name: "Copy link" }).click();
+  await copyEmbed.click();
 
-  await expect(page.getByRole("button", { name: "Copy link" })).toHaveText("Copied");
+  await expect(copyEmbed).toHaveText("Copied");
+  await expect(copyWiki).toHaveText("Copy");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("![[guides/diagram.png]]");
+
+  await copyWiki.click();
+
+  await expect(copyWiki).toHaveText("Copied");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("[[guides/diagram.png]]");
+});
+
+test("a copy button of an image says Copy failed on its own when the browser refuses the clipboard", async ({
+  page,
+}) => {
+  // Without the permission to write the clipboard, the browser of the tests refuses it.
+  await createFile({ tab: guides, name: "diagram.png" });
+  await page.goto("/folders/handbook/guides/diagram.png");
+
+  await page.getByRole("button", { name: "Copy wiki link" }).click();
+
+  await expect(page.getByRole("button", { name: "Copy wiki link" })).toHaveText("Copy failed");
+  await expect(page.getByRole("button", { name: "Copy embed link" })).toHaveText("Copy");
 });
 
 // A file stays as it was when a page that shows it is deleted (integration/file-service.test.ts).
