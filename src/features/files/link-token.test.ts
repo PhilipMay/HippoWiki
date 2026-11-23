@@ -2,7 +2,16 @@ import { createHmac, randomBytes } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { checkLinkToken, expiryOf, isWithinLifetime, signLinkToken } from "@/features/files/link-token";
+import {
+  checkLinkToken,
+  checkUploadLinkToken,
+  expiryOf,
+  isWithinLifetime,
+  signLinkToken,
+  signUploadLinkToken,
+  type UploadLink,
+} from "@/features/files/link-token";
+import { NAME_MAX_LENGTH } from "@/lib/name-limits";
 
 const KEY = randomBytes(32);
 const GRANT = "6f1c2a7e-0b1d-4c9a-9f3e-2d5b8a1c4e70";
@@ -117,6 +126,119 @@ describe("checkLinkToken", () => {
     const part = Buffer.from("not json").toString("base64url");
     const value = `${part}.${createHmac("sha256", KEY).update(part).digest("base64url")}`;
     expect(checkLinkToken(KEY, value)).toStrictEqual({ ok: false, reason: "bad-data" });
+  });
+});
+
+describe("an upload link", () => {
+  const TAB = "3b2a1c0d-9e8f-4a7b-8c6d-5e4f3a2b1c0d";
+  const FILE = "9c8b7a6d-5e4f-4a3b-9c2d-1e0f9a8b7c6e";
+  /** An upload link for a new version of a file in a tab, as the wiki makes it. */
+  const LINK: UploadLink = {
+    grant: GRANT,
+    tab: TAB,
+    name: "diagram.png",
+    size: 4096,
+    strip: true,
+    file: FILE,
+    lockVersion: 3,
+    exp: EXP,
+  };
+  const uploadToken = signUploadLinkToken(KEY, LINK);
+  const [uploadDataPart = "", uploadSignature = ""] = uploadToken.split(".");
+
+  /** The data of an upload link as the wiki makes it, with the given fields changed. */
+  function uploadData(changes: Record<string, unknown> = {}): Record<string, unknown> {
+    return { use: "file-upload-link", v: 1, ...LINK, ...changes };
+  }
+
+  it("encodes exactly the fields of the link and its own use, signed like a download link", () => {
+    expect(JSON.parse(Buffer.from(uploadDataPart, "base64url").toString("utf8"))).toStrictEqual(uploadData());
+    expect(uploadSignature).toBe(createHmac("sha256", KEY).update(uploadDataPart).digest("base64url"));
+  });
+
+  it("gives the data of a token signed with the key, for a new version and for a new file directly in the folder", () => {
+    expect(checkUploadLinkToken(KEY, uploadToken)).toStrictEqual({ ok: true, data: uploadData() });
+    const newFile = { ...LINK, tab: null, file: null, lockVersion: null, strip: false };
+    expect(checkUploadLinkToken(KEY, signUploadLinkToken(KEY, newFile))).toStrictEqual({
+      ok: true,
+      data: { use: "file-upload-link", v: 1, ...newFile },
+    });
+  });
+
+  it("refuses a download token as an upload token, and an upload token as a download token", () => {
+    expect(checkUploadLinkToken(KEY, token)).toStrictEqual({ ok: false, reason: "bad-data" });
+    expect(checkLinkToken(KEY, uploadToken)).toStrictEqual({ ok: false, reason: "bad-data" });
+  });
+
+  it("refuses a token signed with another key, a changed signature and another spelling of it", () => {
+    expect(checkUploadLinkToken(randomBytes(32), uploadToken)).toStrictEqual({ ok: false, reason: "bad-signature" });
+    const last = uploadSignature.at(-1) === "A" ? "B" : "A";
+    expect(checkUploadLinkToken(KEY, `${uploadDataPart}.${uploadSignature.slice(0, -1)}${last}`)).toStrictEqual({
+      ok: false,
+      reason: "bad-signature",
+    });
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const other = alphabet[alphabet.indexOf(uploadSignature.at(-1) ?? "") ^ 1] ?? "";
+    expect(checkUploadLinkToken(KEY, `${uploadDataPart}.${uploadSignature.slice(0, -1)}${other}`)).toStrictEqual({
+      ok: false,
+      reason: "bad-signature",
+    });
+  });
+
+  it.each([
+    ["a data part with =", `${uploadDataPart}=.${uploadSignature}`],
+    ["a data part with +", `+${uploadDataPart.slice(1)}.${uploadSignature}`],
+    ["a signature with /", `${uploadDataPart}./${uploadSignature.slice(1)}`],
+    ["a token without a dot", `${uploadDataPart}${uploadSignature}`],
+    ["a data part of 10,000 characters", `${"A".repeat(10_000)}.${uploadSignature}`],
+  ])("refuses %s by its shape", (_, value) => {
+    expect(checkUploadLinkToken(KEY, value)).toStrictEqual({ ok: false, reason: "malformed" });
+  });
+
+  it.each<[string, unknown]>([
+    ["the use of a download link", uploadData({ use: "file-link" })],
+    ["another format", uploadData({ v: 2 })],
+    ["an extra field", uploadData({ folder: "handbook" })],
+    ["an extra field replace", uploadData({ replace: 3 })],
+    ...(["grant", "tab", "name", "size", "strip", "file", "lockVersion", "exp", "use", "v"] as const).map(
+      (field): [string, unknown] => [`a missing ${field}`, uploadData({ [field]: undefined })],
+    ),
+    ["a grant that is no UUID", uploadData({ grant: "not-a-grant" })],
+    ["a tab that is no UUID", uploadData({ tab: "guides" })],
+    ["a name against the rule", uploadData({ name: "Diagram.PNG" })],
+    ["a name with a space around it", uploadData({ name: " diagram.png" })],
+    ["a name without an extension", uploadData({ name: "diagram" })],
+    ["a name longer than the limit", uploadData({ name: `${"a".repeat(NAME_MAX_LENGTH + 1)}.png` })],
+    ["a name as a number", uploadData({ name: 3 })],
+    ["the size as a string", uploadData({ size: "4096" })],
+    ["the size as a fraction", uploadData({ size: 4096.5 })],
+    ["a size of 0", uploadData({ size: 0 })],
+    ["strip as a string", uploadData({ strip: "true" })],
+    ["strip as a number", uploadData({ strip: 1 })],
+    ["a file that is no UUID", uploadData({ file: "diagram.png" })],
+    ["the lock version as a string", uploadData({ lockVersion: "3" })],
+    ["a lock version of 0", uploadData({ lockVersion: 0 })],
+    ["a file without a lock version", uploadData({ lockVersion: null })],
+    ["a lock version without a file", uploadData({ file: null })],
+    ["exp as a string", uploadData({ exp: String(EXP) })],
+    ["an array", [uploadData()]],
+    ["null", null],
+  ])("refuses correctly signed data with %s", (_, data) => {
+    expect(checkUploadLinkToken(KEY, signedData(data))).toStrictEqual({ ok: false, reason: "bad-data" });
+  });
+
+  it("fits the data of the longest name with the largest numbers into the bound of a token", () => {
+    const longest = signUploadLinkToken(KEY, {
+      ...LINK,
+      name: `${"a".repeat(NAME_MAX_LENGTH)}.webp`,
+      size: Number.MAX_SAFE_INTEGER,
+      strip: false,
+      lockVersion: 2_147_483_647,
+      exp: 9_999_999_999,
+    });
+    expect(checkUploadLinkToken(KEY, longest)).toMatchObject({ ok: true });
+    // The bound of the data part, 512 characters, which a download link keeps as well.
+    expect(longest.split(".")[0]?.length).toBeLessThanOrEqual(512);
   });
 });
 

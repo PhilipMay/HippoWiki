@@ -40,7 +40,7 @@ way, so that the app can show it in the pages it writes. The plan is written fro
 ## Checklist
 
 - [x] Lock version of files in MCP
-- [ ] Token of an upload link
+- [x] Token of an upload link
 - [ ] Upload link service
 - [ ] Upload address with a token
 - [ ] MCP tool get_file_upload_link
@@ -102,7 +102,8 @@ link ever passes for the other (R24).
   an extra and a wrongly typed field each fail the data); a download token checked as an upload token and an upload
   token checked as a download token are both refused as `bad-data`; a changed signature, another spelling of the
   signature and characters outside the alphabet are refused; the data of the longest valid name fits the bound.
-- No end-to-end spec: nothing that the app runs imports the new token yet.
+- No end-to-end spec of its own: nothing that the app runs imports the new token yet. The check of a download token
+  moves into a check shared by both kinds, so the specs of the download links run.
 
 ## Upload link service
 
