@@ -59,7 +59,7 @@ that leads the conversation with the user.
      conversation can be resumed from the file.
 5. When no question is open, run all the checks once more on the whole file. Then present the whole file in the chat
    and ask the user with the question tool to approve it or to change something. A change leads back to step 4.
-6. On approval, set the status to `approved` and run `npm run check`; fix formatting with `npm run format`. Then
+6. On approval, set the status to `approved` and run `npm run check:docs`; fix formatting with `npm run format`. Then
    commit (see "What may change"). Report that the requirements are approved, give the commit message, name anything
    found in other spec files or in `roadmap.md` (see "What may change"), and name the next step as information only:
    writing the step plan `spec/<feature>-steps.md`. Do not ask whether to write or implement the step plan, and do not

@@ -117,6 +117,6 @@ Move the lasting content of this plan into the other spec files and remove the p
 ### Test
 
 - The commands in "When a step is done" in `spec/step-plan-workflow.md` pass. The wrap-up changes only documentation,
-  so it runs `npm run check` (see "Changes to documentation only"); if it changes a comment of the code or the tests,
-  it runs `npm run check:all` and the specs whose files it changed instead.
+  so it runs `npm run check:docs` (see "Changes to documentation only"); if it changes a comment of the code or the
+  tests, it runs `npm run check:all` and the specs whose files it changed instead.
 - `grep` finds no `file-copy-links` in `spec/`, `README.md` and `CLAUDE.md`, and no "the link to copy" in `spec/`.

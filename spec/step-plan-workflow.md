@@ -11,10 +11,10 @@ implements it.
   plan is written only once that file has the status `approved`, and it is written from it: its scope matches the
   scope of the requirements, every requirement ID is covered by a step, and the "Test" sections check the acceptance
   criteria. The requirements file is already committed when the conversation that gathered it ends.
-- Once a new step plan is written and added to the spec catalog, run `npm run check`; fix formatting with
-  `npm run format`. Then commit the step file and its catalog entry in `CLAUDE.md` as one Git commit on the current
-  branch, without asking first. Stage only these two files. The message is a short lowercase summary, for example
-  `plan search`. Do not push.
+- Once a new step plan is written and added to the spec catalog, run `npm run check:docs`, because the plan is
+  documentation only (see "Changes to documentation only"); fix formatting with `npm run format`. Then commit the
+  step file and its catalog entry in `CLAUDE.md` as one Git commit on the current branch, without asking first. Stage
+  only these two files. The message is a short lowercase summary, for example `plan search`. Do not push.
 - Then stop, so that the user can review the plan before any step is built. Report the steps of the plan and the
   commit message. Do not say how to start implementing the plan, and do not offer to in the chat: the card for the
   next session (see below) is the only offer.
@@ -134,13 +134,13 @@ A feature spec (`spec/<feature>.md`) describes a feature as built. The wrap-up s
 
 ## When a step is done
 
-A step is done only when both of the following hold:
-
 These rules hold for every change, inside a step plan or not; a change outside a step plan counts as a plan of one
 step.
 
-- These commands pass, in this order. A step that changes only documentation runs `npm run check` instead of both
-  (see "Changes to documentation only" below).
+A step is done only when both of the following hold:
+
+- These commands pass, in this order. A step that changes only documentation runs `npm run check:docs` instead of
+  both (see "Changes to documentation only" below).
   1. `npm run check:all`: `npm run check` (the format check, the doc references, the unused exports of knip, lint,
      the type check, the unit tests and the cost tests), `npm run test:integration` and `npm run build`, run side by side by `scripts/check.ts`, with
      the cost tests last and alone. Every check runs also when another one fails, so one run shows all failures.
@@ -186,12 +186,17 @@ The end-to-end specs a step affects:
 Changes to documentation only:
 
 - A step that changes only documentation (the files in `spec/`, `README.md`, `CLAUDE.md`, `AGENTS.md`, the skills in
-  `.claude/skills/` and the agents in `.claude/agents/`) is done when `npm run check` passes and its "Test" items have been verified. The integration
-  tests, the end-to-end tests and the build do not run, because none of them reads these files.
+  `.claude/skills/` and the agents in `.claude/agents/`) is done when `npm run check:docs` passes and its "Test" items
+  have been verified. A file in `.claude/skills/` or `.claude/agents/` that is not Markdown, such as a script, is not
+  documentation.
+- `npm run check:docs` runs only what reads these files: Prettier on the Markdown files, the doc references
+  (`npm run docs:check`) and the unit tests that read a documentation file, which end in `.docs.test.ts` (see
+  `testing.md`). The rest of `npm run check` does not run: the type check, lint, knip, the other unit tests and the
+  cost tests read no documentation, and the integration tests, the end-to-end tests and the build do not either.
 - This also holds for the wrap-up step and for a change outside a step plan.
 - A step that also changes any other file, such as code, configuration, `.env.example` or a fixture, is not
   documentation only and runs all the commands above.
-- The report of the step says that only `npm run check` ran and why.
+- The report of the step says that only `npm run check:docs` ran and why.
 - The report of the step names the specs that ran, or says that none ran and why.
 
 A failure that only the complete suite shows is fixed in the step that runs it, also when an earlier step caused it,

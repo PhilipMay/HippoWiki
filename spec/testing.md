@@ -13,6 +13,12 @@ How the code is tested. Commands are listed in `README.md`.
   follow them, after the integration tests and the build, alone as well. `npm run check` alone writes nothing but the
   route types;
   `npm run check:all` also writes `.next/` and starts the test database container.
+- `npm run check:docs` (`scripts/check.ts --docs`) runs only what reads the documentation, side by side: Prettier on
+  the Markdown files of the repository (`prettier --check "**/*.md"`, which leaves out what `.prettierignore` and Git
+  ignore, so `AGENTS.md` stays out), the doc references and the unit tests ending in `.docs.test.ts`. It skips
+  `next typegen`, writes nothing and needs no Podman. When it runs in place of `npm run check` is stated in "Changes to
+  documentation only" in `step-plan-workflow.md`. Like the other modes, it runs every check also when another one
+  fails; `--docs` together with `--all` is refused.
 - `npm run test:coverage` measures the coverage of the unit tests with `@vitest/coverage-v8` (configured in
   `vitest.config.ts`). It covers all `.ts` and `.tsx` files in `src/` except the tests and `src/generated/`, so files
   that no unit test loads show up with 0%. It prints a table, writes an HTML report to `coverage/index.html` and a
@@ -27,6 +33,10 @@ How the code is tested. Commands are listed in `README.md`.
 
 - Vitest project `unit` (`vitest.config.ts`); unit tests sit next to the code as `*.test.ts`. `npm run test:coverage`
   runs only this project.
+- A unit test that reads a documentation file (the files that "Changes to documentation only" in
+  `step-plan-workflow.md` names), such as `src/features/users/example-passwords.docs.test.ts`, which reads `README.md`,
+  ends in `.docs.test.ts`, so that `npm run check:docs` runs it. It stays in the project `unit`, so `npm run check`
+  runs it as well.
 - Vitest project `cost`: tests with a wall-clock budget, next to the code as `*.cost.test.ts` and left out of `unit`.
   `npm run test:cost` runs only this project, on its own and never with coverage: V8 coverage instruments every module,
   the dependencies included, and other test files running at the same time share the CPU, so a budget measured then
@@ -144,7 +154,8 @@ How the code is tested. Commands are listed in `README.md`.
 ## Doc references
 
 - `npm run docs:check` (`scripts/check-doc-references.ts`) checks that the files named in `spec/*.md`, `README.md`,
-  `CLAUDE.md`, the skills in `.claude/skills/` and the agents in `.claude/agents/` exist. It is part of `npm run check` and of the `lint` workflow.
+  `CLAUDE.md`, the skills in `.claude/skills/` and the agents in `.claude/agents/` exist. It is part of `npm run check`,
+  of `npm run check:docs` and of the `lint` workflow.
 
 ## Unused code
 

@@ -31,7 +31,7 @@ rules of the workflows and the testing spec name the new command wherever a chan
 ## Checklist
 
 - [x] Docs check command
-- [ ] Docs-only rules use the docs check
+- [x] Docs-only rules use the docs check
 - [ ] Wrap-up
 
 ## Docs check command
