@@ -1,8 +1,14 @@
 // Runs the checks side by side instead of one after another, and prints the output of each check as one block when it
-// is done, so the outputs do not mix. `npm run check` runs the format check, the doc references, lint, the type check
-// and the unit tests; `npm run check:all` (`--all`) adds the integration tests, the build and the integration cost
-// tests. The exit code is 1 when
-// any check failed; every check still runs, so one run shows all failures.
+// is done, so the outputs do not mix. The exit code is 1 when any check failed; every check still runs, so one run shows
+// all failures.
+//
+// The modes:
+// - `npm run check`: the format check, the doc references, the unused exports of knip, lint, the type check, the unit
+//   tests and the cost tests.
+// - `npm run check:all` (`--all`): `npm run check`, the integration tests, the build and the integration cost tests.
+// - `npm run check:docs` (`--docs`): only what reads the documentation, for a change to documentation only (see
+//   "Changes to documentation only" in `spec/step-plan-workflow.md`): Prettier on the Markdown files, the doc
+//   references and the unit tests ending in `.docs.test.ts`. It writes nothing and needs no route types.
 //
 // What must not overlap:
 // - `next typegen` writes `.next/types`, which lint and the type check read (`tsconfig.json` includes it), so it runs
@@ -18,6 +24,12 @@ type Check = { name: string; command: string };
 type Result = { name: string; ok: boolean; seconds: number; output: string };
 
 const all = process.argv.includes("--all");
+const docs = process.argv.includes("--docs");
+
+if (all && docs) {
+  process.stderr.write("--docs and --all cannot be combined: --docs runs only the checks of the documentation.\n");
+  process.exit(1);
+}
 
 /** Runs one command in a shell and keeps its output, stdout and stderr in the order they came. */
 function run({ name, command }: Check): Promise<Result> {
@@ -49,32 +61,49 @@ function report({ name, ok, seconds, output }: Result): void {
 }
 
 const started = performance.now();
-const results: Result[] = [];
+const results: Result[] = docs ? await checkDocs() : await checkCode();
 
-// Alone first: the route types that lint and the type check read.
-results.push(await run({ name: "typegen", command: "npx next typegen" }));
-
-// Side by side. The build waits for lint and the type check, because it writes the route types again.
-const lintAndTypes = Promise.all([
-  run({ name: "lint", command: "npm run --silent lint" }),
-  run({ name: "tsc", command: "npx tsc --noEmit" }),
-]);
-const parallel: Promise<Result | Result[]>[] = [
-  run({ name: "format:check", command: "npm run --silent format:check" }),
-  run({ name: "docs:check", command: "npm run --silent docs:check" }),
-  run({ name: "knip", command: "npm run --silent knip" }),
-  run({ name: "test:unit", command: "npm run --silent test:unit" }),
-  lintAndTypes,
-];
-if (all) {
-  parallel.push(run({ name: "test:integration", command: "npm run --silent test:integration" }));
-  parallel.push(lintAndTypes.then(() => run({ name: "build", command: "npm run --silent build" })));
+/** The checks that read the documentation, side by side. */
+function checkDocs(): Promise<Result[]> {
+  return Promise.all([
+    run({ name: "format:check (Markdown)", command: 'npx prettier --check "**/*.md"' }),
+    run({ name: "docs:check", command: "npm run --silent docs:check" }),
+    run({ name: "test:unit (docs)", command: "npx vitest run --project unit .docs.test.ts" }),
+  ]);
 }
-results.push(...(await Promise.all(parallel)).flat());
 
-// Alone last: the tests with a wall-clock budget, then those against the test database.
-results.push(await run({ name: "test:cost", command: "npm run --silent test:cost" }));
-if (all) results.push(await run({ name: "test:integration:cost", command: "npm run --silent test:integration:cost" }));
+/** The checks of `npm run check`, and with `--all` those of `npm run check:all`. */
+async function checkCode(): Promise<Result[]> {
+  const results: Result[] = [];
+
+  // Alone first: the route types that lint and the type check read.
+  results.push(await run({ name: "typegen", command: "npx next typegen" }));
+
+  // Side by side. The build waits for lint and the type check, because it writes the route types again.
+  const lintAndTypes = Promise.all([
+    run({ name: "lint", command: "npm run --silent lint" }),
+    run({ name: "tsc", command: "npx tsc --noEmit" }),
+  ]);
+  const parallel: Promise<Result | Result[]>[] = [
+    run({ name: "format:check", command: "npm run --silent format:check" }),
+    run({ name: "docs:check", command: "npm run --silent docs:check" }),
+    run({ name: "knip", command: "npm run --silent knip" }),
+    run({ name: "test:unit", command: "npm run --silent test:unit" }),
+    lintAndTypes,
+  ];
+  if (all) {
+    parallel.push(run({ name: "test:integration", command: "npm run --silent test:integration" }));
+    parallel.push(lintAndTypes.then(() => run({ name: "build", command: "npm run --silent build" })));
+  }
+  results.push(...(await Promise.all(parallel)).flat());
+
+  // Alone last: the tests with a wall-clock budget, then those against the test database.
+  results.push(await run({ name: "test:cost", command: "npm run --silent test:cost" }));
+  if (all) {
+    results.push(await run({ name: "test:integration:cost", command: "npm run --silent test:integration:cost" }));
+  }
+  return results;
+}
 
 const failed = results.filter(({ ok }) => !ok).map(({ name }) => name);
 const total = ((performance.now() - started) / 1000).toFixed(1);

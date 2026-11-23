@@ -9,7 +9,8 @@ export default defineConfig({
     projects: [
       {
         // Unit tests next to the code; they mock the database and run in `npm run check`. The pure helpers of the
-        // end-to-end tests in `e2e/support/` have unit tests as well.
+        // end-to-end tests in `e2e/support/` have unit tests as well. A unit test that reads a documentation file ends
+        // in `.docs.test.ts`; `npm run check:docs` runs only these.
         test: {
           name: "unit",
           environment: "node",

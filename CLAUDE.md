@@ -51,6 +51,7 @@ source ~/.nvm/nvm.sh && nvm use
 npm install
 npm run check   # format:check, docs:check, knip, lint, typecheck, test, side by side
 npm run check:all  # check, test:integration and build side by side, then test:integration:cost
+npm run check:docs  # for a change to documentation only: Prettier on *.md, docs:check, *.docs.test.ts, side by side
 npm run test:coverage  # unit test coverage, report in coverage/
 npm run test:cost  # tests with a time budget, on their own and without coverage
 npm run build

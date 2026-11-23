@@ -334,33 +334,34 @@ first, with a token that has the `read:packages` scope.
 
 ## Commands
 
-| Command                         | Description                                                                                         |
-| ------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `npm run dev`                   | Start the development server                                                                        |
-| `npm run build`                 | Create a production build                                                                           |
-| `npm run start`                 | Serve the production build                                                                          |
-| `npm run lint`                  | Lint with ESLint                                                                                    |
-| `npm run format`                | Format all files with Prettier                                                                      |
-| `npm run format:check`          | Check formatting without changing files                                                             |
-| `npm run docs:check`            | Check that the file references in the docs, skills and agents point to existing files               |
-| `npm run knip`                  | Report unused files, exports and dependencies with knip                                             |
-| `npm run typecheck`             | Generate the Next.js route types and run the type checker                                           |
-| `npm run test`                  | Run the unit tests with Vitest, then the cost tests                                                 |
-| `npm run test:unit`             | Run the unit tests with Vitest                                                                      |
-| `npm run test:coverage`         | Run the unit tests and measure their coverage (report in `coverage/`)                               |
-| `npm run test:cost`             | Run the tests with a time budget, on their own and without coverage                                 |
-| `npm run check`                 | Run `format:check`, `docs:check`, `knip`, `lint`, `typecheck` and `test`                            |
-| `npm run check:all`             | Run `check`, `test:integration` and `build` side by side, then `test:integration:cost`              |
-| `npm run test:integration`      | Run the integration tests against a throwaway test database                                         |
-| `npm run test:integration:cost` | Run the integration tests with a time budget, on their own, against a throwaway test database       |
-| `npm run test:e2e`              | Run the end-to-end tests with Playwright                                                            |
-| `npm run test:e2e:ui`           | Run the end-to-end tests in the Playwright UI                                                       |
-| `npm run test:e2e:production`   | Run the end-to-end tests against a production build                                                 |
-| `npm run admin:setup`           | Create the admin account from `HIPPOWIKI_ADMIN_PASSWORD`                                            |
-| `npm run build:admin`           | Bundle the admin setup into `build/admin.mjs` for the container image                               |
-| `npm run build:search-index`    | Bundle the search index of the existing pages into `build/search-index.mjs` for the container image |
-| `npm run image:build`           | Build the container image `hippowiki:local` with Podman                                             |
-| `npm run image:smoke`           | Check the built image against a throwaway database                                                  |
+| Command                         | Description                                                                                          |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `npm run dev`                   | Start the development server                                                                         |
+| `npm run build`                 | Create a production build                                                                            |
+| `npm run start`                 | Serve the production build                                                                           |
+| `npm run lint`                  | Lint with ESLint                                                                                     |
+| `npm run format`                | Format all files with Prettier                                                                       |
+| `npm run format:check`          | Check formatting without changing files                                                              |
+| `npm run docs:check`            | Check that the file references in the docs, skills and agents point to existing files                |
+| `npm run knip`                  | Report unused files, exports and dependencies with knip                                              |
+| `npm run typecheck`             | Generate the Next.js route types and run the type checker                                            |
+| `npm run test`                  | Run the unit tests with Vitest, then the cost tests                                                  |
+| `npm run test:unit`             | Run the unit tests with Vitest                                                                       |
+| `npm run test:coverage`         | Run the unit tests and measure their coverage (report in `coverage/`)                                |
+| `npm run test:cost`             | Run the tests with a time budget, on their own and without coverage                                  |
+| `npm run check`                 | Run `format:check`, `docs:check`, `knip`, `lint`, `typecheck` and `test`                             |
+| `npm run check:all`             | Run `check`, `test:integration` and `build` side by side, then `test:integration:cost`               |
+| `npm run check:docs`            | Run only what reads the docs: Prettier on `*.md`, `docs:check`, unit tests ending in `.docs.test.ts` |
+| `npm run test:integration`      | Run the integration tests against a throwaway test database                                          |
+| `npm run test:integration:cost` | Run the integration tests with a time budget, on their own, against a throwaway test database        |
+| `npm run test:e2e`              | Run the end-to-end tests with Playwright                                                             |
+| `npm run test:e2e:ui`           | Run the end-to-end tests in the Playwright UI                                                        |
+| `npm run test:e2e:production`   | Run the end-to-end tests against a production build                                                  |
+| `npm run admin:setup`           | Create the admin account from `HIPPOWIKI_ADMIN_PASSWORD`                                             |
+| `npm run build:admin`           | Bundle the admin setup into `build/admin.mjs` for the container image                                |
+| `npm run build:search-index`    | Bundle the search index of the existing pages into `build/search-index.mjs` for the container image  |
+| `npm run image:build`           | Build the container image `hippowiki:local` with Podman                                              |
+| `npm run image:smoke`           | Check the built image against a throwaway database                                                   |
 
 `src/features/users/common-passwords.ts`, the list of common passwords that new passwords are checked against, is
 generated. To make it again, download the source file that `scripts/common-passwords.ts` names (`SOURCE_URL`, pinned
