@@ -119,9 +119,10 @@ These are technical constraints set by the user.
   exists and has not expired, its user is no admin and does not have the first password any more, and the user's role
   on the folder is not below the role of the grant.
   - Acceptance: Each of these makes a link that has not expired answer 404: revoking the app, revoking all apps,
-    changing the own password, deleting the user, the end of the grant, a role on the folder lowered below the role of
-    the grant or taken away, connecting the same app to the same address again (which replaces the old grant), and a
-    server started without `HIPPOWIKI_PUBLIC_URL`.
+    changing the own password with the choice to disconnect the apps, deactivating or deleting the user, when it
+    comes (see `roadmap.md`), the end of the grant, a role on the folder lowered below the role of the grant or taken
+    away, connecting the same app to the same address again (which replaces the old grant), and a server started
+    without `HIPPOWIKI_PUBLIC_URL`.
 - R14: The path of the request must resolve as for a logged-in user: the folder, the tab if the address has one and the
   file exist, the file is not deleted, its current version is the version of the link, and the file is in the folder
   of the grant.
@@ -192,8 +193,8 @@ These are technical constraints set by the user.
   query passes without a session cookie.
 - `container-image.md`: a new environment variable for the lifetime, and the key of the links in the database next to
   the secret of the session cookies, with how to withdraw all links.
-- `connected-apps.md` and `oauth.md`: revoking an app, changing the password and the end of a grant also stop its
-  links.
+- `connected-apps.md` and `oauth.md`: revoking an app, changing the own password with the choice to disconnect the
+  apps and the end of a grant also stop its links.
 
 ## Decisions
 
