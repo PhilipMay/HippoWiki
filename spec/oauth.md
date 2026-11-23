@@ -145,7 +145,9 @@ The fetch of a metadata document must not be a way to make the server ask an add
 - The client holds an access token that works for 1 hour (`ACCESS_TOKEN_LIFETIME_MS` in
   `src/features/oauth/token-service.ts`), and never longer than its grant, and a refresh token.
   Only the MCP address of the grant accepts the access token.
-- Revoking the grant, deleting its user, its client or its folder ends both tokens at once.
+- Revoking the grant, deleting its user, its client or its folder ends both tokens at once, and the links to files
+  that the app got through MCP with it (see `signed-file-links.md`). So does the end of the grant, and a change of the
+  own password with the choice to disconnect the apps.
 - A grant past its lifetime cannot be refreshed; it stays in the list, marked as expired, until it is revoked.
 
 ## Refresh

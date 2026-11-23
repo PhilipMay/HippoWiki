@@ -1,4 +1,4 @@
-// Tests of signed file links written from spec/signed-file-links-requirements.md alone, against the test database:
+// Tests of signed file links written from the spec alone (spec/signed-file-links.md), against the test database:
 // that handing out a link stores nothing, and that a link ends with its grant although the link itself has not
 // expired. The other rules are checked by integration/file-link-service.test.ts, integration/file-link-key.test.ts
 // and integration/grant-service.test.ts.
@@ -55,7 +55,7 @@ async function download(token: string): Promise<Buffer | null> {
 }
 
 describe("signed file links", () => {
-  // spec/signed-file-links-requirements.md, "What a link holds", R6
+  // spec/signed-file-links.md, "The tool": handing out a link stores nothing
   it("handing out a link writes no row to the database", async () => {
     const { grant } = await createGrant({ owner: alice, folder });
     const actor = inMcp(
@@ -74,7 +74,7 @@ describe("signed file links", () => {
     expect(await allRows()).toEqual(before);
   });
 
-  // spec/signed-file-links-requirements.md, "Downloading with a link", R13: a link never outlives its grant
+  // spec/signed-file-links.md, "Downloading with a link": a link never outlives its grant
   it("the end of the grant ends a link that has not expired", async () => {
     const { grant } = await createGrant({ owner: alice, folder, expiresAt: new Date(Date.now() + 60_000) });
     const [version] = file.versions;

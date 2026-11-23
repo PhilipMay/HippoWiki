@@ -204,7 +204,7 @@ describe("the hint on the addresses", () => {
       for (const { path, value } of fieldsOf(result)) {
         if (!isAddress(value)) continue;
         // The link of get_file_download_link is no address for people: it downloads the file without a login until it
-        // expires (signed-file-links-requirements.md, R3 and R27), so it does not say that it opens only after a login.
+        // expires ("The tool" in signed-file-links.md), so it does not say that it opens only after a login.
         if (tool === "get_file_download_link" && path.at(-1) === "downloadLink") continue;
         seen.add(value);
         const description = schemaAt(schemas.get(tool), path)?.description ?? "";

@@ -4,7 +4,7 @@ Images and PDFs as built: users of a folder upload them as files of their own, d
 next to the pages, so that screenshots, diagrams and manuals live in the wiki. Pages show images with `![[…]]` and
 link files with `[[…]]`; every file has an address that returns the file itself and a details page with its versions
 and the actions on it. Files are moved, renamed, deleted and restored like pages, are found by their names in search,
-and AI apps list them and read their details through MCP, never their content.
+and AI apps list them and read their details through MCP, and download one with a short-lived signed link.
 
 Folders, tabs and their addresses are described in `content-structure.md`, the roles in `folder-roles.md`, the
 links in `wiki-links.md`, the soft delete in `page-deletion.md`, the directory of the files in `container-image.md`.
@@ -67,8 +67,10 @@ Tests:
 - The details page is at `/folders/<folder>/<name.ext>` and `/folders/<folder>/<tab>/<name.ext>` (see "Addresses" in
   `content-structure.md`).
 - Both addresses answer only a logged-in user with a role on the folder, checked on every request, so that removing a
-  role ends the access with the next request. No address of a file works without a login: the file address leads to
-  the login page, as every other address of the app.
+  role ends the access with the next request. Without a login the file address leads to the login page, as every
+  other address of the app. The one exception is a `GET` or `HEAD` of the file address with a valid `token` of a signed
+  link, which an AI app gets through MCP: it downloads the current version without a login for a few minutes and
+  answers with `Cache-Control: private, no-store` (see `signed-file-links.md`).
 - A user without a role, an admin, a missing or deleted file, a version that does not exist and a malformed address
   get the same answer, so that nobody learns from an address whether a file exists: the details page shows the
   not-found page, and the file address answers a plain 404, because no page of the app can run under the headers of
@@ -175,6 +177,8 @@ Tests:
 - Every connection lists the files of its folder with `list_folder` and reads the details of one with `read_file`:
   its name and place, type, size, the width and height of an image, its last change, its addresses, its wiki link and,
   for an image, its embed link, the texts of the copy fields of its details page, and the pages that show or link it. No tool returns the content of a file, and no connection reaches the files of another folder.
+- Every connection gets a short-lived signed link to the current version of a file of its folder with
+  `get_file_download_link`, which downloads the file without a login (see `signed-file-links.md`).
 - No tool uploads, changes, moves, renames or deletes a single file. The one tool after which a file is deleted is
   `delete_tab` of a Manager connection, together with its tab (see "Tools" in `mcp.md`).
 
@@ -229,20 +233,23 @@ Tests:
 - The copy fields have no hint text; their labels and values say what they do. Rejected: a line under each field.
 - Files are uploaded only from the views of folders and tabs. Rejected for now: uploading from the editor.
 - Files are found by their names; the text of PDFs comes later.
-- AI apps only read the details of files, through `list_folder`, `read_file` and `search_pages`, and `delete_tab`
-  deletes the files of a tab with its pages, as in the browser. Rejected for now: uploads through MCP; images as
+- AI apps read the details of files, through `list_folder`, `read_file` and `search_pages`, download a file with the
+  short-lived link of `get_file_download_link`, and `delete_tab` deletes the files of a tab with its pages, as in the
+  browser. Rejected for now: uploads through MCP; images as
   images and PDFs as their text. Rejected: refusing `delete_tab` for a tab with files.
-- The address of a file answers only logged-in users with a role, checked on every request. Rejected: short-lived
-  links without a login; public secret links, which cannot be withdrawn.
+- The address of a file answers logged-in users with a role, checked on every request, and an AI app with a
+  short-lived signed link that follows the access of its connected app (see `signed-file-links.md`). Rejected: such
+  links in the browser; public secret links, which cannot be withdrawn.
 
 ## Current limits
 
 - no other types than PNG, JPEG, GIF, WebP and PDF, such as SVG, Office or text files
-- no upload, change, move, rename or delete of a single file through MCP, and no content of files through MCP
+- no upload, change, move, rename or delete of a single file through MCP, and no content of files in a tool result
 - no upload from the editor (paste, drop or a toolbar button)
 - no limit on the total size of files per folder or user (see "Rate limits and quotas" in `roadmap.md`)
 - no S3-compatible storage; no host of its own for files
-- no links to files that work without a login
+- no links to files that work without a login, apart from the short-lived links of AI apps (see
+  `signed-file-links.md`)
 - no search of the text inside PDFs
 - no list of the files that no page shows or links
 - no progress bar of an upload, no Range requests, no thumbnails or smaller renditions of large images

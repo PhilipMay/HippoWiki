@@ -38,7 +38,8 @@ change and of logging out other browsers are in `src/features/auth/components/`.
 
 - Every user sees and revokes only their own apps. The service takes the acting user first and only ever touches
   the actor's own grants; nobody, the admin included, sees or revokes the apps of another user.
-- Revoking deletes the grant after a confirmation; its access token and its refresh token stop working at once. It
+- Revoking deletes the grant after a confirmation; its access token and its refresh token stop working at once, and so
+  do the links to files that the app got through MCP, although they have not expired (see `signed-file-links.md`). It
   cannot be undone: the app has to be connected again.
 - The list shows each app with its name, the current name of its folder and its role, the time it was connected, its
   expiry or "Expired", and its last use or "never", newest first. The last use is written at most once a minute per grant (`LAST_USE_INTERVAL_MS` in
@@ -86,6 +87,10 @@ change and of logging out other browsers are in `src/features/auth/components/`.
   folder, the role of the grant and the user's role.
 - The last use is written only for an accepted access token.
 - A failure to write the last use is logged and does not refuse the request.
+- The links to files that an app got through MCP pass the same checks of their grant, with `callerOfGrant()` of the
+  same service, so that the two never disagree; they do not look at the access token and write no last use. So
+  everything that refuses the grant, revoking it, revoking all apps, a password change with the choice to disconnect
+  the apps, the end of the grant and a role that is too low, also stops its links (see `signed-file-links.md`).
 
 ## Own account page
 

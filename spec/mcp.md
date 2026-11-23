@@ -16,7 +16,8 @@ actor of MCP `inMcp()` in `src/features/folder-roles/actors.ts`. The protocol is
 (`@modelcontextprotocol/server`, see `tech.md`).
 
 Tests: `e2e/mcp-access.spec.ts`, `e2e/mcp-read.spec.ts`, `e2e/mcp-write.spec.ts`, `e2e/mcp-edit.spec.ts`,
-`e2e/mcp-manager.spec.ts`, `e2e/mcp-limits.spec.ts` for the limits of the endpoint, `e2e/oauth.spec.ts` for the access tokens of OAuth, `e2e/ai-apps.spec.ts` for the view "AI
+`e2e/mcp-manager.spec.ts`, `e2e/mcp-limits.spec.ts` for the limits of the endpoint, `e2e/file-download-links.spec.ts`
+for the links of `get_file_download_link`, `e2e/oauth.spec.ts` for the access tokens of OAuth, `e2e/ai-apps.spec.ts` for the view "AI
 apps", `integration/grant-service.test.ts`, `integration/page-service.test.ts`, `integration/folder-service.test.ts`,
 and the unit tests next to the code,
 `src/features/mcp/tools.test.ts`, `src/features/mcp/edits.test.ts`, `src/features/mcp/http.test.ts`,
@@ -125,9 +126,9 @@ The tests of the wiki links and the hint on the addresses written from the spec 
 
 ## Tools
 
-A Reader connection gets the four read tools, a Writer connection also the four write tools of pages, and a Manager
-connection also the four tools of a Manager: four, eight and twelve tools. A tool is registered only when the role of the
-connection may do the function of the folder that its write checks (`mayDo()` with `FUNCTION_ROLES` in
+A Reader connection gets the five read tools, a Writer connection also the four write tools of pages, and a Manager
+connection also the four tools of a Manager: five, nine and thirteen tools. A tool is registered only when the role of
+the connection may do the function of the folder that its write checks (`mayDo()` with `FUNCTION_ROLES` in
 `src/features/folder-roles/roles.ts`), so the tools follow the services. A tool that the connection does not get is not
 listed, and a call of it changes nothing.
 
@@ -150,8 +151,11 @@ Read tools, which say so to the client (`readOnlyHint`):
   `list_folder`, its wiki link and embed link included, the number of its versions, and the pages of the folder that show or link it, with their name, tab
   and title, as the section "Shown or linked from" of its details page lists them. A file that does not exist, also a
   deleted one, is a tool error that points to `list_folder`.
-- No tool returns the content of a file, as bytes, as an image or as text, and no tool uploads, changes, moves, renames
-  or deletes a single file: that is done only in the browser. The one tool after which a file is deleted is
+- `get_file_download_link`: a short-lived signed link to the current version of one file, found as `read_file` finds
+  it, which downloads the file without a login for a few minutes, with the name, tab, type and size of the file and
+  when the link expires (see `signed-file-links.md`, which holds its rules).
+- No tool returns the content of a file, as bytes, as an image or as text: `get_file_download_link` returns a link, not
+  content. No tool uploads, changes, moves, renames or deletes a single file: that is done only in the browser. The one tool after which a file is deleted is
   `delete_tab` of a Manager connection, which deletes the files of the tab together with its pages.
 - `search_pages`: the pages of the whole folder that match the words of `query`, the best match first, each with its
   title, its name and tab as `read_page` takes them, its address, its wiki link, a piece of its text, its last change, its last
@@ -256,11 +260,13 @@ What holds for all of them:
   change counts up and a content save without a change and a move to the current name and place keep. The wiki link
   names the page as stored, after a move or rename its new tab and name.
 - An address is the full URL of the folder, tab, page or file, which a person can open; the address of a file itself
-  answers only a logged-in user with a role on its folder (see `attachments.md`). The description of every address
+  answers only a logged-in user with a role on its folder (see `attachments.md`), and the link of
+  `get_file_download_link` is no such address. The description of every address
   field of every output schema, of the folder, tabs, pages, files, the details pages of files and the deleted items,
   ends, after what it says of its item, with the same hint (`ADDRESS_HINT` in `src/features/mcp/tool-schemas.ts`):
   "Addresses are for people: each opens only in a browser after logging in to the wiki, so an AI app cannot fetch it
-  with its access token. To point to a page or file in a page, use its wiki link."
+  with its access token. To point to a page or file in a page, use its wiki link. To download an image or PDF, get a
+  short-lived link with get_file_download_link."
 - Next to every address of a page that a tool returns stands its wiki link in `wikiLink`, `[[name]]` for a page placed
   directly in the folder or `[[tab/name]]` for a page in a tab; a page has no embed link. Next to every address of a
   file stand its wiki link in `wikiLink`, `[[name.ext]]` or `[[tab/name.ext]]`, and in `embedLink` the embed of an
@@ -288,8 +294,10 @@ What holds for all of them:
   link to a page that does not exist is allowed and shown as missing (see "AI apps" in `wiki-links.md`). They also
   state the grammar of files: the types and their extensions, `[[name.ext]]` and `[[tab/name.ext]]` to link a file,
   `![[name.ext]]` and `![[tab/name.ext]]` to show an image, each with an optional label, that the read tools give the
-  details of files but never their content, and that a single file is uploaded, changed, moved, renamed or deleted
-  only in the browser. The instructions of every role state, after the grammar of files, the hint of every address
+  details of files but never their content, that `get_file_download_link` gives a link that downloads one file for a
+  few minutes and that such a link must never be written into a page, because it expires and lets anyone who reads it
+  download the file, and that a single file is uploaded, changed, moved, renamed or deleted only in the browser. The
+  instructions of every role state, after the grammar of files, the hint of every address
   field, in the same words.
 
 ## Changing parts of a page
@@ -335,7 +343,7 @@ What the server does:
   (`USER_TEXT_NOTE` in `src/features/mcp/tool-schemas.ts`):
   - in the instructions of every connection, for every role, after what the role allows;
   - at the end of the descriptions of the tools whose results carry titles or content of pages or names of files:
-    `list_folder`, `read_page`, `search_pages`, `read_file`, `create_page`, `replace_page_content`, `edit_page_content`, `move_or_rename_page`, `delete_page` and
+    `list_folder`, `read_page`, `search_pages`, `read_file`, `get_file_download_link`, `create_page`, `replace_page_content`, `edit_page_content`, `move_or_rename_page`, `delete_page` and
     `delete_tab`;
   - as the field `note`, the first field of the results of these tools, in the structured data and in the JSON of the
     text, and named in their output schemas, so that the model reads it before the page text whichever of the two a
@@ -481,7 +489,8 @@ of the history.
   show or link them, but never their content, so that an agent can give its user the address of a manual and the
   pages that use it without the server sending images or PDFs into the context of a model, which some clients refuse.
   Rejected: images as images and PDFs as their text, which can come later; the details of files in `read_page`; no
-  tools for files at all.
+  tools for files at all. An agent that needs the bytes downloads the file outside the context of the model with the
+  short-lived link of `get_file_download_link` (see `signed-file-links.md`).
 - Page text is marked in three places, the instructions, the descriptions and the results, so that a client that
   drops the instructions still shows the model the note. Rejected: the instructions and descriptions only; the content
   as an embedded resource of its own, which clients show differently.
@@ -547,7 +556,8 @@ of the history.
 ## Current limits
 
 - no deleted pages or files through MCP (see "Tools")
-- no content of files through MCP, and no upload, change, move, rename or delete of a single file (see "Tools")
+- no content of files in a tool result, only a short-lived link to download one, and no upload, change, move, rename
+  or delete of a single file (see "Tools")
 - `edit_page_content` changes only exact texts: no diffs or patches, no line numbers or positions, no edits targeted
   at a heading or section, and no appending or prepending without naming a text
 - no change of several pages in one call, apart from the update of the wiki links that a move, a rename or a tab
@@ -566,4 +576,5 @@ of the history.
 - no link fields in the lists of pages and files that have no address: `linkedFrom` of `read_page`,
   `shownOrLinkedFrom` of `read_file`, `updatedPages` of `move_or_rename_page` and `rename_tab`, and the pages and
   files of `delete_tab` keep the fields they have, from which the grammar in the instructions builds the link
-- no link that works without a login: the addresses open only in a browser after a login
+- no address for people that works without a login: the addresses open only in a browser after a login; an app
+  downloads a file only with the short-lived link of `get_file_download_link` (see `signed-file-links.md`)

@@ -35,9 +35,8 @@ file itself holds.
 - `spec/attachments.md`: How do images and PDFs work as files of folders and tabs?
 - `spec/attachments-ideas.md`: How do other wikis store, embed and secure images and attachments, and what does that
   suggest for attachments in HippoWiki, its editor and MCP?
-- `spec/signed-file-links-requirements.md`: What must a short-lived signed link do that lets an AI app download an
-  image or PDF of its folder without a login?
-- `spec/signed-file-links-steps.md`: In which steps are signed file links built and tested?
+- `spec/signed-file-links.md`: How does an AI app download an image or PDF of its folder with a short-lived signed link,
+  and how is such a link checked?
 - `spec/issue-report.md`: How is an issue of a review of code or documents reported?
 - `spec/review-report-v2.md`: Which findings and questions of the reviews, checks and tests are open, in one part per
   review? A fixed finding is deleted, a part with its last finding, and the file with its last part.

@@ -1,4 +1,4 @@
-// Tests of signed file links written from spec/signed-file-links-requirements.md alone: what the tool
+// Tests of signed file links written from the spec alone (spec/signed-file-links.md): what the tool
 // get_file_download_link of a real server hands out, and how a download by link answers with and without a session
 // cookie. The rules that e2e/file-download-links.spec.ts and the unit and integration tests already check are left to
 // them.
@@ -80,7 +80,7 @@ async function linkKey(): Promise<Buffer> {
   return Buffer.from(stored, "hex");
 }
 
-// spec/signed-file-links-requirements.md, "The tool", R3
+// spec/signed-file-links.md, "The tool": the link is the file address with the token as its only query
 test("the link of a file in a tab is the public URL, the path of the file address and the token as its only query", async ({
   request,
 }) => {
@@ -93,7 +93,7 @@ test("the link of a file in a tab is the public URL, the path of the file addres
   expect([...new URL(downloadLink).searchParams.keys()]).toEqual(["token"]);
 });
 
-// spec/signed-file-links-requirements.md, "The tool", R4 (and R18 for the default lifetime of 600 seconds)
+// spec/signed-file-links.md, "The tool" (and "Lifetime and key" for the default lifetime of 600 seconds)
 test("the result holds the note first, then the name, tab, type and size of the current version, the link and its expiry of now plus 600 seconds, in the data and in the text", async ({
   request,
 }) => {
@@ -127,7 +127,7 @@ test("the result holds the note first, then the name, tab, type and size of the 
   expect(text).toEqual(data);
 });
 
-// spec/signed-file-links-requirements.md, "What a link holds", R7
+// spec/signed-file-links.md, "What a link holds": the five fields of the data
 test("the data of a link holds exactly use, v, the grant of the connection, the id of the current version and exp", async ({
   request,
 }) => {
@@ -147,7 +147,7 @@ test("the data of a link holds exactly use, v, the grant of the connection, the 
   expect(Number.isInteger(data.exp)).toBe(true);
 });
 
-// spec/signed-file-links-requirements.md, "What a link holds", R8
+// spec/signed-file-links.md, "What a link holds": the encoding and the signature
 test("the signature of a link is the HMAC-SHA256 of its data part with the key of the links, both in base64url without padding", async ({
   request,
 }) => {
@@ -163,7 +163,7 @@ test("the signature of a link is the HMAC-SHA256 of its data part with the key o
   ).toBe(signature);
 });
 
-// spec/signed-file-links-requirements.md, "The tool", R2 (and R1 for a page name)
+// spec/signed-file-links.md, "The tool": the file is found as read_file finds it, and no page gets a link
 test("a page name, a missing file, a deleted file and a file of another folder get the tool error of read_file and no link", async ({
   request,
 }) => {
@@ -207,7 +207,7 @@ test.describe("a download by link, with and without a session cookie", () => {
     expect(response.headers().location, what).toBeUndefined();
   }
 
-  // spec/signed-file-links-requirements.md, "Downloading with a link", R10
+  // spec/signed-file-links.md, "Downloading with a link": a request with token is checked by the token alone
   test("a valid link downloads with the session cookie of a user who may not read the file, checked by the token alone", async ({
     browser,
   }) => {
@@ -229,7 +229,7 @@ test.describe("a download by link, with and without a session cookie", () => {
     }
   });
 
-  // spec/signed-file-links-requirements.md, "Downloading with a link", R10
+  // spec/signed-file-links.md, "Downloading with a link": a request with token is checked by the token alone
   test("an invalid token with the session cookie of a user who may read the file answers the plain 404", async ({
     browser,
   }) => {
@@ -250,7 +250,8 @@ test.describe("a download by link, with and without a session cookie", () => {
     }
   });
 
-  // spec/signed-file-links-requirements.md, "Downloading with a link", R16, for the failures of R11 and R12 that no
+  // spec/signed-file-links.md, "Downloading with a link": the plain 404 of every failure, for the failures of the token
+  // and its expiry that no
   // other end-to-end test sends to the server; the check of each is unit tested in src/features/files/link-token.test.ts.
   test("a malformed token, data that is no data of a link and an expiry beyond the lifetime each answer the plain 404 of a missing file", async ({
     request,
@@ -297,7 +298,7 @@ test.describe("a download by link, with and without a session cookie", () => {
   });
 });
 
-// spec/signed-file-links-requirements.md, "Downloading with a link", R10: `download` is the one other query allowed,
+// spec/signed-file-links.md, "Downloading with a link": `download` is the one other query allowed,
 // with no order between the two.
 test("download before the token also answers the file as an attachment", async ({ request }) => {
   const token = await signFileLinkToken({ grant: await grantId(), version: currentVersion().id });

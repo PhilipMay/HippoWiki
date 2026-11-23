@@ -184,7 +184,8 @@ How the code is tested. Commands are listed in `README.md`.
   same container name and port, so integration and end-to-end tests must not run at the same time.
 - `integration/setup.ts` runs before every test file: it mocks `@/lib/db` so that `getDb()` returns the client of
   `getTestDb()`, and empties the tables before every test with `emptyTestDatabase()`, which leaves only the
-  migration history and `AuthSecret`. The known users of the end-to-end tests are not created here. It also mocks
+  migration history, `AuthSecret` and `FileLinkKey`. It also forgets the key of the links to files that an earlier
+  test file kept in memory. The known users of the end-to-end tests are not created here. It also mocks
   `getServerEnv()`, because `getAuth()` reads `NODE_ENV` through it and CI has no `.env`; the mocked environment has
   a `HIPPOWIKI_PUBLIC_URL`, which the OAuth service needs for the MCP addresses of the folders. Nothing of Next.js is
   mocked: the tests call the services, which work outside a request. The test files run one after another
@@ -297,7 +298,8 @@ How the code is tested. Commands are listed in `README.md`.
     submits it, e.g. a content form with the login of the admin or the "New user" form with the login of a user.
   - `resetTestDatabase()` puts the known users and the saved session rows back into the database of its worker, so the
     saved cookies are valid on the server of every worker and stay valid after every reset. It never empties
-    `AuthSecret`: the running server keeps the secret that signed them, and every worker database has the same one.
+    `AuthSecret`: the running server keeps the secret that signed them, and every worker database has the same one. It
+    keeps `FileLinkKey` as well, because the server keeps the key of the links to files in memory.
   - The Playwright UI does not run the setup project by itself (see `README.md`).
   - A test that needs a pending password change sets `mustChangePassword` on the row of the known user or the admin
     and keeps the saved state: the session reads the user from the database on every request. The tests of the login
@@ -352,8 +354,8 @@ How the code is tested. Commands are listed in `README.md`.
     replaces the whole content as input that CodeMirror reads, `expectContent()` asserts the exact content,
     `pasteContent()` dispatches a paste, `startInSourceMode()` starts the editor in source mode, and `shownLines()`
     reads the text that each line shows.
-  - `resetTestDatabase()` empties all tables of the database of its worker except the migration history and
-    `AuthSecret`, then creates the known users with their fixed ids and restores their saved sessions; tests call it in
+  - `resetTestDatabase()` empties all tables of the database of its worker except the migration history,
+    `AuthSecret` and `FileLinkKey`, then creates the known users with their fixed ids and restores their saved sessions; tests call it in
     `beforeEach`. `emptyTestDatabase()` only empties the tables, and only of `hippowiki_test` or a worker database; the
     integration tests use it.
   - The `TRUNCATE` of `emptyTestDatabase()` waits for its locks only a short time and is tried again a few times
@@ -514,6 +516,11 @@ How the code is tested. Commands are listed in `README.md`.
   new versions and reverts; `e2e/file-links.spec.ts` links and embeds of files in pages; `e2e/move-or-rename-file.spec.ts`
   and `e2e/delete-file.spec.ts` the moves, renames, deletes and restores; and `e2e/attachments-spec-tests.spec.ts` and
   `e2e/mcp-attachments-spec-tests.spec.ts` the tests written from the spec alone (see `attachments.md`).
+- The signed links to files have specs of their own: `e2e/file-download-links.spec.ts` the tool
+  `get_file_download_link` and the download by link without a cookie, and `e2e/file-download-links-spec-tests.spec.ts`
+  the tests written from the spec alone (see `signed-file-links.md`). A token that the server would not hand out, one
+  that has expired or is broken, is signed by `signFileLinkToken()` of `e2e/support/database.ts` with the key of the
+  database of the worker, which it generates as the server does when there is none.
 - `e2e/ai-apps.spec.ts` covers the folder view "AI apps" with its addresses per role and the copy button.
 - `e2e/search.spec.ts` covers the results view and its address, the search field on every view of a folder and where
   it is left out, and the messages of the limits. Chromium waits with a request for an address until a request for

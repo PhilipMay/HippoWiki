@@ -63,7 +63,7 @@ The documents use one name for each of these things:
   | `grants`       | the connected apps and the check of an access token       | `limits.ts`: the limit of connected apps per user                                                                                                                                                                                                                                                                                                                                                      |
   | `mcp`          | the MCP server and the folder view "AI apps"              | `server.ts` (the tools a connection gets), `tools.ts` (their handlers), `tool-schemas.ts` (their inputs and outputs), `edits.ts` (the replacements of `edit_page_content`), `http.ts`                                                                                                                                                                                                                  |
   | `search`       | search in a folder, in the browser and through MCP        | `text.ts` and `language.ts` (what search derives of a page), `index-data.ts` (what a write stores), `words.ts` (the parser of the search words), `query-text.ts`, `excerpt.ts`, `slots.ts`, `limits.ts`                                                                                                                                                                                                |
-  | `files`        | files of folders and tabs, their versions and addresses   | `types.ts` (the five types and their detection), `derive.ts`, `store.ts` (the blobs on disk), `images.ts` (sharp), `startup.ts`, `writes.ts`, `http.ts` (the file and upload addresses)                                                                                                                                                                                                                |
+  | `files`        | files of folders and tabs, their versions and addresses   | `types.ts` (the five types and their detection), `derive.ts`, `store.ts` (the blobs on disk), `images.ts` (sharp), `startup.ts`, `writes.ts`, `http.ts` (the file and upload addresses), `link-token.ts` and `link-service.ts` (the signed links of AI apps, see `signed-file-links.md`)                                                                                                               |
   | `oauth`        | the OAuth authorization server for AI apps                | `clients-service.ts`, `authorization-service.ts`, `token-service.ts`, `cleanup-service.ts`, `rows.ts` (what they share), `issuer.ts` (the issuer and `isOAuthOn()`), `secret.ts`, `metadata-fetch.ts`, `http.ts`                                                                                                                                                                                       |
 
 - `src/test/`: the helpers of the unit tests, no code of the app (see "Unit tests" in `testing.md`)
@@ -260,7 +260,9 @@ The feature is described in `users-and-login.md`. What every new route, query an
     which is not public: the proxy would cut its body after 10 MB, so its adapter checks the session itself (see
     below). The image optimizer of Next.js is switched off in
     `next.config.ts`, because the app uses no `next/image`: `/_next/image` answers 404 behind the login. The consent
-    page `/oauth/authorize` is not public.
+    page `/oauth/authorize` is not public. One request passes without a cookie although its address is in the
+    matcher: a `GET` or `HEAD` of a file address `/files/…` whose query has `token`, a download by a signed link of an
+    AI app, which its route checks by the token alone (see below).
   - `requireUser()` from `src/features/auth/session.ts` checks the session in the database. It is the layer that
     protects the data: it redirects to the login page without a session, and to the password change while the user
     still has the first password.
@@ -286,7 +288,9 @@ The feature is described in `users-and-login.md`. What every new route, query an
   valid, a user who still has the first password, an admin and a user without a role with a plain 404; the upload
   address `/api/uploads/…`, left out of the proxy, does the same, and refuses a request with an `Origin` other than
   the own host or the public URL, or with `Sec-Fetch-Site: cross-site`, before it looks at the session, so that no
-  page of another site can make a browser upload a file.
+  page of another site can make a browser upload a file. A request of the file address with `token` is checked by the
+  token alone (`getLinkedFileContent()` of `src/features/files/link-service.ts`), with or without a session cookie, and
+  the session is not read (see `signed-file-links.md`).
 - A caller other than the browser, such as the MCP server, finds its actor with
   `authenticateAccessToken(headers, address)` of the grant service, from the access token of a grant in the
   `Authorization` header (see `connected-apps.md`). It returns the same `Actor`, type included, as the session of the
@@ -318,8 +322,8 @@ The feature is described in `users-and-login.md`. What every new route, query an
   runs code in the wiki, also when a browser opens it on its own: `Content-Security-Policy: default-src 'none';
 sandbox`, `X-Content-Type-Options: nosniff`, `Cross-Origin-Resource-Policy: same-origin`, `X-Frame-Options: DENY`,
   `Referrer-Policy: same-origin` and the `Strict-Transport-Security` of the app. The route of a file adds the type
-  that the upload decided from the content, `Content-Disposition` with its name, `Cache-Control: private, no-cache`
-  and its SHA-256 as `ETag` (`src/features/files/http.ts`). Under these headers no page of the app runs, so a file
+  that the upload decided from the content, `Content-Disposition` with its name, `Cache-Control: private, no-cache`,
+  or `private, no-store` for a download by a signed link, and its SHA-256 as `ETag` (`src/features/files/http.ts`). Under these headers no page of the app runs, so a file
   address answers what it does not send with a plain 404 instead of the not-found page.
 - `poweredByHeader: false`: no response names the framework in `X-Powered-By`.
 - A change to the headers is checked by `e2e/security-headers.spec.ts` and the smoke test of the container image.
@@ -415,12 +419,12 @@ sandbox`, `X-Content-Type-Options: nosniff`, `Cross-Origin-Resource-Policy: same
   `npm run db:migrate` then applies it and checks that the database matches the schema.
 - The name of a migration directory must sort after all existing ones, because migrations are applied in the order of
   their names.
-- What Prisma cannot express in the schema, such as the check constraint that keeps `AuthSecret` to a single row, the
-  trigger that refuses every update that changes the type of a `User`, or the trigger that refuses every role of an
+- What Prisma cannot express in the schema, such as the check constraint that keeps `AuthSecret` to a single row (and
+  `FileLinkKey`, in its own migration), the trigger that refuses every update that changes the type of a `User`, or the trigger that refuses every role of an
   admin (all three at the end of `prisma/migrations/20261116103037_init/`), is added to the SQL of the migration by
   hand (`npm run db:migrate -- --name <change> --create-only`, edit the file, then `npm run db:migrate`).
-- Every model has a UUID id generated by PostgreSQL (`gen_random_uuid()`), except the single row of `AuthSecret` and
-  the counters `LoginAttempt`, `LoginWindow` and `OAuthRegistrationWindow`, whose keys are what they count, and every
+- Every model has a UUID id generated by PostgreSQL (`gen_random_uuid()`), except the single rows of `AuthSecret` and
+  `FileLinkKey` and the counters `LoginAttempt`, `LoginWindow` and `OAuthRegistrationWindow`, whose keys are what they count, and every
   model stores its times as `timestamptz(3)`. The
   foreign keys between folders, tabs and pages, and those of a role to its folder and user, restrict deleting
   (`onDelete: Restrict`), so that no content and no role disappears by a cascade; the sessions, accounts, grants and

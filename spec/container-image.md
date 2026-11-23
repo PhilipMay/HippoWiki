@@ -114,8 +114,8 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
 
 - A container needs two variables, `DATABASE_URL` and `HIPPOWIKI_ADMIN_PASSWORD`, and nothing else. The optional
   variables `HIPPOWIKI_TRUSTED_PROXIES`, `HIPPOWIKI_LOG_CLIENT_ADDRESS`, `HIPPOWIKI_PUBLIC_URL`,
-  `HIPPOWIKI_MCP_BODY_LIMIT`, `HIPPOWIKI_MCP_RATE_BURST`, `HIPPOWIKI_MCP_RATE_PER_MINUTE`, `HIPPOWIKI_FILES_DIR` and
-  `HIPPOWIKI_FILE_SIZE_LIMIT` are described below.
+  `HIPPOWIKI_MCP_BODY_LIMIT`, `HIPPOWIKI_MCP_RATE_BURST`, `HIPPOWIKI_MCP_RATE_PER_MINUTE`, `HIPPOWIKI_FILES_DIR`,
+  `HIPPOWIKI_FILE_SIZE_LIMIT` and `HIPPOWIKI_FILE_LINK_LIFETIME` are described below.
 - `DATABASE_URL`: `postgresql://<user>:<password>@<host>:<port>/<database>`. The migration, the admin setup and the
   server read it. Special characters in the password are percent-encoded.
 - Only this form, without parameters, is supported and tested. The migration reads the URL with the schema engine of
@@ -192,8 +192,15 @@ Code: `Containerfile`, `.containerignore`, `scripts/image.sh`, `scripts/image-mi
   - `HIPPOWIKI_FILE_SIZE_LIMIT` is the size limit of an uploaded file in bytes, a whole number in plain decimal digits
     like the limits of MCP, from `1048576` (1 MiB) to `1073741824` (1 GiB), default `26214400` (25 MiB), which the
     messages show as 25 MiB (`src/lib/env.ts`).
+  - `HIPPOWIKI_FILE_LINK_LIFETIME` is the lifetime of the short-lived links with which AI apps download files, in
+    seconds, a whole number in plain decimal digits from `60` to `3600`, default `600` (10 minutes); any other value
+    stops the server with an error that names the variable. Lowering it also shortens the links handed out before
+    (see `signed-file-links.md`).
 - There is no variable for the secret that signs the session cookies: the server generates it on first use and
   stores it in the database (table `AuthSecret`). It therefore survives a new container, and all sessions with it.
+- The same holds for the key that signs the links to files of AI apps (table `FileLinkKey`), a key of its own, so that
+  a new one logs nobody out. To withdraw all links at once, the operator deletes its row and restarts the server; the
+  next link generates a new key (see `signed-file-links.md`).
 - The database is PostgreSQL in the version pinned in `scripts/Containerfile`. The database and its user are created
   outside HippoWiki. The user must be allowed to create tables, because the migrations run with it. The database
   needs the encoding UTF8 with a UTF-8 character type, such as `C.UTF-8` or `en_US.utf8`, and the extension `pg_trgm`
