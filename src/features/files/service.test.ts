@@ -419,6 +419,21 @@ describe("uploadFile", () => {
       expect(mocks.fileCreate).not.toHaveBeenCalled();
     });
 
+    it.each([
+      ["without a refusal level, as the browser uploads", {}, "warn", "info"],
+      ["with the refusal level info, as an upload by link", { refusalLevel: "info" as const }, "info", "warn"],
+    ] as const)("logs the refusal %s at its level and not at the other", async (_case, level, logged, notLogged) => {
+      mocks.receiveBlob.mockResolvedValueOnce({ ok: true, value: { ...staged(PNG_HEAD), size: 999 } });
+
+      await upload("diagram.png", { ...EXACT, ...level });
+
+      expect(mocks[logged]).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "diagram.png", expected: 1000 }),
+        "uploaded file refused: wrong size",
+      );
+      expect(mocks[notLogged]).not.toHaveBeenCalledWith(expect.anything(), "uploaded file refused: wrong size");
+    });
+
     it("refuses an exact size over the size limit with the limit before it reads the body", async () => {
       await expect(upload("diagram.png", { ...NEW_FILE, size: 26_214_401 })).resolves.toEqual({
         ok: false,

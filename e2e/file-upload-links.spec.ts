@@ -172,6 +172,8 @@ test("a query besides the one token is refused and stores nothing", async ({ req
   for (const query of [
     `?token=${token}&replace=1`,
     `?token=${token}&removeMetadata=0`,
+    // The query with which the browser keeps the metadata of an image.
+    `?token=${token}&strip=0`,
     `?token=${token}&token=${token}`,
   ]) {
     const response = await post(request, "guides/screenshot.png", query, image);

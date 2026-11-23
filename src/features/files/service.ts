@@ -205,6 +205,11 @@ export type UploadOptions = {
    * is (the browser). Another file of the name is refused as `file-changed`.
    */
   fileId: string | null;
+  /**
+   * The level at which the refusals of the upload are logged: `warn` without it (the browser), `info` for an upload by
+   * a signed link, whose service logs the reason of a refusal at `info` itself (see `signed-file-links.md`).
+   */
+  refusalLevel?: "warn" | "info";
 };
 
 /** The version that an upload stored: its number, its size in bytes, and the width and height of an image. */
@@ -605,13 +610,14 @@ async function refusedFileWrite(
   fileId: string,
   lockVersion: unknown,
   what: string,
+  level: "warn" | "info" = "warn",
 ): Promise<{ ok: false; error: FileNotFound | FileChanged }> {
   const file = await findStoredFile(fileId);
   if (!file) {
-    logger.warn({ fileId }, `${what} not found`);
+    logger[level]({ fileId }, `${what} not found`);
     return { ok: false, error: { code: "file-not-found" } };
   }
-  logger.warn({ fileId, lockVersion }, `${what} changed after the lock version the write is based on`);
+  logger[level]({ fileId, lockVersion }, `${what} changed after the lock version the write is based on`);
   return { ok: false, error: { code: "file-changed", file } };
 }
 
@@ -724,6 +730,8 @@ export async function uploadFile(
   const opened = openContentWrite(actor, "file not uploaded");
   if (opened.refused) return opened.refused;
   const { editor } = opened;
+  // The refusals of the upload itself; an error stays an error.
+  const refusal = options.refusalLevel ?? "warn";
 
   const checked = await checkedPlace(actor, place, "file not uploaded", "failed to upload file");
   if (!checked.ok) return checked;
@@ -739,16 +747,16 @@ export async function uploadFile(
   if (!existing.ok) return existing;
   const replace = options.replace === null ? null : parseLockVersion(options.replace);
   if (options.replace === null && existing.value) {
-    logger.warn({ ...ids, name: fileName.name }, "name of uploaded file already in use");
+    logger[refusal]({ ...ids, name: fileName.name }, "name of uploaded file already in use");
     return { ok: false, error: { code: "name-taken", file: existing.value } };
   }
   if (options.replace !== null) {
     if (!existing.value) {
-      logger.warn({ ...ids, name: fileName.name }, "file of new version not found");
+      logger[refusal]({ ...ids, name: fileName.name }, "file of new version not found");
       return { ok: false, error: { code: "file-not-found" } };
     }
     if (existing.value.lockVersion !== replace || (options.fileId !== null && existing.value.id !== options.fileId)) {
-      logger.warn(
+      logger[refusal](
         { fileId: existing.value.id, lockVersion: options.replace, expectedFileId: options.fileId },
         "file of new version changed after the lock version the write is based on",
       );
@@ -758,14 +766,14 @@ export async function uploadFile(
 
   const store = await getStore();
   if (!store.on) {
-    logger.warn({ ...ids, reason: store.reason }, "file not uploaded: files are off");
+    logger[refusal]({ ...ids, reason: store.reason }, "file not uploaded: files are off");
     return { ok: false, error: { code: "files-off" } };
   }
 
   const limit = getServerEnv().HIPPOWIKI_FILE_SIZE_LIMIT;
   const { size } = options;
   if (size !== null && size > limit) {
-    logger.warn({ ...ids, name: fileName.name, size, limit }, "uploaded file refused: exact size over the limit");
+    logger[refusal]({ ...ids, name: fileName.name, size, limit }, "uploaded file refused: exact size over the limit");
     return { ok: false, error: { code: "too-large", limit } };
   }
   let content: VersionContent;
@@ -779,12 +787,12 @@ export async function uploadFile(
           : size === null
             ? { code: "too-large", limit }
             : { code: "wrong-size", expected: size };
-      logger.warn({ ...ids, name: fileName.name, reason: error.code }, "uploaded file refused");
+      logger[refusal]({ ...ids, name: fileName.name, reason: error.code }, "uploaded file refused");
       return { ok: false, error };
     }
     if (size !== null && received.value.size !== size) {
       await discardStaged(received.value);
-      logger.warn(
+      logger[refusal](
         { ...ids, name: fileName.name, size: received.value.size, expected: size },
         "uploaded file refused: wrong size",
       );
@@ -793,18 +801,18 @@ export async function uploadFile(
     const detected = detectType(received.value.head);
     if (detected !== expected) {
       await discardStaged(received.value);
-      logger.warn({ ...ids, name: fileName.name, detected }, "uploaded file refused: wrong type");
+      logger[refusal]({ ...ids, name: fileName.name, detected }, "uploaded file refused: wrong type");
       return { ok: false, error: { code: "wrong-type", detected, expected } };
     }
     const stored = await storedContent(store.dir, received.value, expected, options.stripMetadata);
     if (!stored.ok) {
-      logger.warn({ ...ids, name: fileName.name, reason: stored.error.code }, "uploaded file refused");
+      logger[refusal]({ ...ids, name: fileName.name, reason: stored.error.code }, "uploaded file refused");
       return stored;
     }
     content = stored.value;
   } catch (err) {
     if (err instanceof ImageBusyError) {
-      logger.warn({ ...ids, name: fileName.name }, "uploaded file refused: too many images are being processed");
+      logger[refusal]({ ...ids, name: fileName.name }, "uploaded file refused: too many images are being processed");
     } else {
       logger.error({ err, ...ids, name: fileName.name }, "failed to receive uploaded file");
     }
@@ -839,12 +847,12 @@ export async function uploadFile(
   } catch (err) {
     await removeBlob();
     if (err instanceof FileChangedMeanwhile && existing.value) {
-      return refusedFileWrite(existing.value.id, replace, "file of new version");
+      return refusedFileWrite(existing.value.id, replace, "file of new version", refusal);
     }
     // Before the folder and tab keys: a missing actor must not be reported as a missing folder or tab.
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
     if (isUniqueViolation(err, FILE_NAME)) {
-      logger.warn({ ...ids, name: fileName.name }, "name of uploaded file already in use");
+      logger[refusal]({ ...ids, name: fileName.name }, "name of uploaded file already in use");
       const taken = await lookUp(() => findPlacedFile(folderId, tabId, fileName.name), ids, "failed to upload file");
       if (!taken.ok) return taken;
       if (taken.value) return { ok: false, error: { code: "name-taken", file: taken.value } };
@@ -852,7 +860,7 @@ export async function uploadFile(
     }
     if (isForeignKeyViolation(err)) {
       // A missing folder, a missing tab or a tab of another folder: the composite foreign key refuses all of them.
-      logger.warn(ids, "folder or tab of uploaded file not found");
+      logger[refusal](ids, "folder or tab of uploaded file not found");
       return { ok: false, error: { code: tabId ? "tab-not-found" : "folder-not-found" } };
     }
     logger.error({ err, ...ids }, "failed to upload file");

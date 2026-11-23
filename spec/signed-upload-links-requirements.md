@@ -83,8 +83,8 @@ in the browser.
     connection.
 - R22: A request to the upload address with a token must have no other query; one with another query, a second token
   included, must be refused and store nothing. Every choice of the upload comes from the link.
-  - Acceptance: a valid link with `&replace=1`, with `&removeMetadata=0` or with a second `token` is refused and stores
-    nothing.
+  - Acceptance: a valid link with `&replace=1`, with `&strip=0`, with `&removeMetadata=0` or with a second `token` is
+    refused and stores nothing.
 - R17: An upload by link from a page of another site must be refused, as an upload in the browser is: a foreign
   `Origin` or `Sec-Fetch-Site: cross-site`.
   - Acceptance: an upload by a valid link with a foreign `Origin`, or with `Sec-Fetch-Site: cross-site`, is refused and

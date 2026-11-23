@@ -300,7 +300,7 @@ describe("uploadByLink", () => {
       { folderId: FOLDER_ID, tabId: TAB_ID },
       "diagram.png",
       BODY,
-      { contentLength: 4096, stripMetadata: true, replace: 3, size: 4096, fileId: FILE_ID },
+      { contentLength: 4096, stripMetadata: true, replace: 3, size: 4096, fileId: FILE_ID, refusalLevel: "info" },
     );
     expect(logged()).toBe("[[],[],[]]");
   });
@@ -316,6 +316,7 @@ describe("uploadByLink", () => {
       replace: null,
       size: 4096,
       fileId: null,
+      refusalLevel: "info",
     });
   });
 

@@ -44,7 +44,7 @@ way, so that the app can show it in the pages it writes. The plan is written fro
 - [x] Upload link service
 - [x] Upload address with a token
 - [x] MCP tool get_file_upload_link
-- [ ] Spec tests
+- [x] Spec tests
 - [ ] Wrap-up
 
 ## Lock version of files in MCP
@@ -224,7 +224,7 @@ cross-site`; unlike the browser, a request without `Origin`, as `curl` sends it,
   - an upload of a new image and of a new version of a PDF by link stores them; the details page names the user of
     the connection and MCP; the answer holds the details and links of R14 (R4, R6, R14);
   - the same upload with a session cookie of another user stores it with the user of the connection (R4);
-  - `&replace=1`, `&removeMetadata=0` and a second `token` are refused and store nothing (R22);
+  - `&replace=1`, `&strip=0`, `&removeMetadata=0` and a second `token` are refused and store nothing (R22);
   - a foreign `Origin` and `Sec-Fetch-Site: cross-site` are refused, the same upload without them is stored (R17);
   - one byte more and one byte less than the stated size are refused (R12);
   - an expired link, a forged link and a link of a revoked app get the same status and body (R15); a download token

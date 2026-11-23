@@ -257,6 +257,8 @@ export async function uploadByLink(
     replace: link.lockVersion,
     size: link.size,
     fileId: link.file,
+    // The refusals are logged once more below, with the reason, at `info`: a valid link whose file is refused.
+    refusalLevel: "info",
   });
   if (uploaded.ok) return { ok: true, value: { file: uploaded.value, caller } };
 
