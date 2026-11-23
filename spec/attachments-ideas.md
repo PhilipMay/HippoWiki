@@ -227,7 +227,7 @@ function names are those of the Wiki.js repository.
 - A local volume: streaming, the cache of the operating system and a size limited only by the disk. But the files and
   the database can drift apart (files without a row, rows without a file), the volume is backed up next to the
   database, a consistent backup needs coordination, and more than one container needs shared storage. HippoWiki's
-  container is meant to run `--read-only` (see "Checks on the deployment" in `review-report.md`), so the volume and a
+  container is meant to run `--read-only` (see "Checks on the deployment" in `review-report-v2.md`), so the volume and a
   place for temporary files must be mounted.
 - S3-compatible storage: scales on its own and can serve files directly through presigned addresses. It adds a second
   service next to the single container, has the same drift and orphan problems as a volume, and needs its own access

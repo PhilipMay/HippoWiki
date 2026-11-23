@@ -12,7 +12,7 @@ file itself holds.
 - `spec/requirements-workflow.md`: How are the requirements of a feature gathered before its step plan? A feature in
   this workflow has a file `spec/<feature>-requirements.md`, listed here while it exists.
 - `spec/step-plan-workflow.md`: How is a feature planned in steps, built, finished and specified, and how is a finding
-  of a review report fixed?
+  of the review report fixed?
 - `spec/architecture.md`: How is the code organised, and which conventions does new code follow?
 - `spec/testing.md`: How is the code tested and checked, locally and in CI?
 - `spec/pages.md`: What is a page, its content, title, name and rendering?
@@ -36,16 +36,8 @@ file itself holds.
 - `spec/attachments-ideas.md`: How do other wikis store, embed and secure images and attachments, and what does that
   suggest for attachments in HippoWiki, its editor and MCP?
 - `spec/issue-report.md`: How is an issue of a review of code or documents reported?
-- `spec/review-report.md`: Which findings of the security and code review are open? A fixed finding is deleted, and
-  the file with its last finding.
-- `spec/markdown-parser-review.md`: Which findings of the review of the code around the Markdown parser are open? A
-  fixed finding is deleted, and the file with its last finding.
-- `spec/manual-check-report.md`: Which findings of the manual checks of the app and of the settings of the repository
-  are open? A fixed finding is deleted, and the file with its last finding.
-- `spec/list-layout-review.md`: Which findings of the review of the list layout in the page view are open? A fixed
-  finding is deleted, and the file with its last finding.
-- `spec/explorative-test-report.md`: Which findings of the explorative test of the web application are open? A fixed
-  finding is deleted, and the file with its last finding.
+- `spec/review-report-v2.md`: Which findings and questions of the reviews, checks and tests are open, in one part per
+  review? A fixed finding is deleted, a part with its last finding, and the file with its last part.
 
 ## Running the Checks
 
@@ -86,7 +78,8 @@ and other unordered items; numbered lists only where the order itself matters, s
 ## Reporting Review Issues
 
 Report every issue found in a review of code or of documents, such as the files in `spec/`, as `spec/issue-report.md`
-describes. When a finding of a review report is fixed, follow "Fixing a finding of the review report" in
+describes, in a part of `spec/review-report-v2.md`; a review does not start a report file of its own. When a finding of
+the review report is fixed, follow "Fixing a finding of the review report" in
 `spec/step-plan-workflow.md`.
 
 ## Git Handling
@@ -99,5 +92,5 @@ describes. When a finding of a review report is fixed, follow "Fixing a finding 
 - After the last step of a step plan, push as described in `spec/step-plan-workflow.md`.
 - After the requirements of a feature are approved, commit as described in `spec/requirements-workflow.md`; do not
   push.
-- A change outside a step plan, a finding of a review report fixed on its own included, is not committed: it stays in
+- A change outside a step plan, a finding of the review report fixed on its own included, is not committed: it stays in
   the working tree for the user.

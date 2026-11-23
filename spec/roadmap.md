@@ -153,7 +153,7 @@ All from "Current limits" in `container-image.md`:
   (`users-and-login.md`, `container-image.md`).
 - Search words on the deployment: the access log of the reverse proxy does not record the words of a search, `q` of
   the address of the results `/folders/<folder>?view=search&q=<words>`, because HippoWiki itself never logs them and
-  people search for names and incidents (`search.md`, "Checks on the deployment" of `review-report.md`).
+  people search for names and incidents (`search.md`, "Checks on the deployment" of `review-report-v2.md`).
 - Forged headers on the deployment: the same failed login with a forged `X-Forwarded-For` and `X-Real-Ip` is logged
   with the same address as before.
 - Server port on the deployment: the port of the server is reachable only through Traefik and not directly
@@ -163,7 +163,8 @@ All from "Current limits" in `container-image.md`:
 - Logins at the same time on the deployment: each counted login holds a database connection for an interactive
   transaction, and the pool of the `pg` adapter has 10 connections by default. Check that a burst of logins for one
   name is answered with waits and not with a failed login, and from how many logins with the right password at the
-  same moment the rounds of `reserveAttempt()` give up there. The local numbers are in `manual-check-report.md`.
+  same moment the rounds of `reserveAttempt()` give up there. The local numbers are in the part "Manual checks of the app and
+  of the repository" of `review-report-v2.md`.
 - Log volume: every login whose `X-Forwarded-For` has no usable entry logs a warning; check that a correct setup
   behind Traefik writes none, so that a warning points to a broken setup.
 - OAuth on the deployment, after the checks above and only then with `HIPPOWIKI_PUBLIC_URL` set
@@ -183,7 +184,7 @@ All from "Current limits" in `container-image.md`:
     connectors really use, and whether a connector that loses the answer to a refresh has to be connected again too
     often for the strict refresh rule (`oauth.md`).
 - The checks on the deployment of the security and code review of 2026-11-14, each described with its area in the
-  section "Checks on the deployment" of `review-report.md`:
+  section "Checks on the deployment" of `review-report-v2.md`:
   - The reverse proxy: TLS by BSI TR-02102-2 and a redirect to HTTPS with HSTS passed on; `Host` passed unchanged and
     unknown hosts refused; `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` of clients replaced; body
     limits, timeouts and rate limits for `/login`, `/oauth/register` and `/oauth/token`; for the MCP addresses under
@@ -205,5 +206,5 @@ All from "Current limits" in `container-image.md`:
     released regularly for fixes of the base image; a scan of the published image for vulnerabilities.
   - The logs: stdout and stderr collected into a separate system with limited access, a retention period and
     synchronised time; alerts on a reused refresh token, on waits after failed logins and on a failed health check.
-  - The GitHub repository: who may push to the image package. The other settings were read; what they lack is in
-    `review-report.md` and `manual-check-report.md`.
+  - The GitHub repository: who may push to the image package. The other settings were read; what they lack is in the
+    parts "Security and code review" and "Manual checks of the app and of the repository" of `review-report-v2.md`.

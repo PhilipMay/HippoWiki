@@ -28,8 +28,9 @@ If plan mode is not active, skip this section.
    for one with the question tool and offer the feature specs of the spec catalog in `CLAUDE.md`. Do not write these
    tests yourself.
 2. Run the checks of "When a step is done" in `spec/step-plan-workflow.md` with the tests the agent kept.
-3. Write the findings to `spec/<topic>-test-review.md` as `spec/issue-report.md` describes, and add the file to the
-   spec catalog in `CLAUDE.md` like the other review files. No findings, no file.
+3. Write the findings as `spec/issue-report.md` describes, in a new part at the end of `spec/review-report-v2.md`
+   named after the spec tests of the topic; create the file if it does not exist and add it to the spec catalog in
+   `CLAUDE.md`. No findings, no part.
 4. Report the rules with their tests, the new test files, and the findings by severity.
 
 This is a change outside a step plan: nothing is committed, as "Git Handling" in `CLAUDE.md` says. A finding is fixed

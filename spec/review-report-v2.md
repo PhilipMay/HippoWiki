@@ -1,6 +1,17 @@
-# HippoWiki – Security and Code Review Report
+# HippoWiki – Review Report
 
-## Summary
+This file holds the open findings of every review, check and test of HippoWiki: issues, suggestions, nits and
+questions, each written as `issue-report.md` describes. Each review has a part of its own, with its summary, scope and
+method, findings and what it reviewed; the counts in the summary of a part are those of its open findings.
+
+- A new review, check or test adds a part at the end of this file; it does not start a file of its own. A review that
+  repeats an earlier one, such as a recheck, updates the part of that review.
+- A fixed finding is deleted, as "Fixing a finding of the review report" in `step-plan-workflow.md` describes. A part
+  whose last finding and last open question are gone is deleted, and this file with its last part.
+
+## Security and code review
+
+### Summary
 
 - Verdict: no Blocker. The core holds: every page, query and Server Action checks the login, the admin rights and the
   owner of grants on the server; the session and OAuth secrets are random, stored as hashes and kept apart by kind; the OAuth server follows PKCE, exact redirect addresses, single-use codes and refresh rotation
@@ -21,7 +32,7 @@
   comparison and the revert), the delete of a tab and the tools of a Manager connection, which came after the last
   recheck and are named in the threat model but in no "Reviewed" list.
 
-## Scope and method
+### Scope and method
 
 - Reviewed: all of `src/` without `src/generated/`, `prisma/` with its schema and migrations, `scripts/`,
   `Containerfile`, `.containerignore`, `next.config.ts`, `.github/` with the workflows and Dependabot, `package.json`
@@ -64,7 +75,7 @@
   least Major. A claim that the review could not show is written as a `question:`. The confidence of a Suggestion is
   High, Medium or Low as `issue-report.md` defines it, and a `question:` has none.
 
-## Standards and target level
+### Standards and target level
 
 - Target level: OWASP ASVS 5.0.0 Level 2. The ASVS IDs are those of the release tag `v5.0.0` of the ASVS repository.
   A Level 3 requirement is named only as a `suggestion:`, and only where it is cheap to meet.
@@ -91,9 +102,9 @@
   Access Control), the ASVS ID, the CWE ID, and the section or requirement ID of any other standard (for example NIST
   SP 800-63B-4 3.1.1.2, RFC 9700 4.1, `CON.10.A14`).
 
-## Threat model
+### Threat model
 
-### Assets
+#### Assets
 
 - Page content, folders, tabs and the deleted pages.
 - The revisions of a page, which keep the content, the user and the channel of every change for as long as the page
@@ -107,7 +118,7 @@
 - The logs, with client addresses, user names and events.
 - The build and release pipeline and the published container image.
 
-### Actors
+#### Actors
 
 - Someone without a login on the internet.
 - A logged-in user, and an admin.
@@ -118,7 +129,7 @@
 - Someone with access to the logs or to a database backup.
 - Someone who can change a dependency, a GitHub action or the base image (supply chain).
 
-### Entry points
+#### Entry points
 
 - Public addresses, the exceptions in the `matcher` of `src/proxy.ts`:
   - `/login`, the login page, and its Server Action `logIn()`;
@@ -156,7 +167,7 @@
   its migration (`scripts/image-start.sh`, `scripts/image-migrate.sh`).
 - CI: the workflows in `.github/workflows/` and Dependabot (`.github/dependabot.yml`).
 
-### Trust boundaries
+#### Trust boundaries
 
 - The reverse proxy in front of the app, and its forwarding headers (`X-Forwarded-For`, `X-Forwarded-Host`,
   `X-Forwarded-Proto`), which the app trusts only from `HIPPOWIKI_TRUSTED_PROXIES`.
@@ -166,13 +177,13 @@
 - The MCP client and its model, which read the tool output.
 - The package registry, GitHub Actions and the registry of the base image.
 
-### Threats by entry point
+#### Threats by entry point
 
 The letters are those of STRIDE: S spoofing, T tampering, R repudiation, I information disclosure, D denial of
 service, E elevation of privilege. "Checked in" names the area of "Findings" (and the step of the plan) that checks
 the threat.
 
-#### Login page and `logIn()`
+##### Login page and `logIn()`
 
 | STRIDE | Threat                                                                                              | Checked in                           |
 | ------ | --------------------------------------------------------------------------------------------------- | ------------------------------------ |
@@ -185,7 +196,7 @@ the threat.
 | D      | Locking out a known user on purpose; tying up the server with password hashes                       | Login, passwords, sessions and users |
 | E      | A login path the specs do not describe (other endpoints of Better Auth)                             | Login, passwords, sessions and users |
 
-#### Pages behind the login and their RSC payloads
+##### Pages behind the login and their RSC payloads
 
 | STRIDE | Threat                                                                                        | Checked in                                           |
 | ------ | --------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
@@ -200,7 +211,7 @@ the threat.
 | E      | `/users` without a server-side check of the admin role                                        | Access control                                       |
 | E      | The forced password change does not block the other pages                                     | Login, passwords, sessions and users                 |
 
-#### Server Actions
+##### Server Actions
 
 | STRIDE | Threat                                                                                                | Checked in                                             |
 | ------ | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
@@ -215,14 +226,14 @@ the threat.
 | E      | A write or a role action without the check of the actor's role on the folder                          | Access control                                         |
 | E      | `approve()` used to approve a request the user never saw (CSRF, a changed client or redirect address) | OAuth                                                  |
 
-#### `/api/health`
+##### `/api/health`
 
 | STRIDE | Threat                                               | Checked in                        |
 | ------ | ---------------------------------------------------- | --------------------------------- |
 | I      | The answer names versions or internal details        | Configuration and container image |
 | D      | Each call opens a database query that can be flooded | Configuration and container image |
 
-#### The MCP addresses `/mcp/<folder-uuid>/<reader|writer|manager>`
+##### The MCP addresses `/mcp/<folder-uuid>/<reader|writer|manager>`
 
 | STRIDE | Threat                                                                                                      | Checked in                                       |
 | ------ | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
@@ -237,7 +248,7 @@ the threat.
 | D      | Large request bodies, batches or large answers tie up the server                                            | MCP server                                       |
 | E      | A Reader connection reaches a write tool; a connection reaches another folder or goes past the current role | Connected apps; MCP server                       |
 
-#### OAuth endpoints and the consent page
+##### OAuth endpoints and the consent page
 
 | STRIDE | Threat                                                                                                          | Checked in                           |
 | ------ | --------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
@@ -253,7 +264,7 @@ the threat.
 | E      | SSRF: the metadata fetch reaches the local network, the loopback address or the cloud metadata service          | OAuth                                |
 | E      | A revoked grant whose access or refresh tokens still work                                                       | OAuth                                |
 
-#### Outgoing fetch of client ID metadata documents
+##### Outgoing fetch of client ID metadata documents
 
 | STRIDE | Threat                                                              | Checked in |
 | ------ | ------------------------------------------------------------------- | ---------- |
@@ -262,7 +273,7 @@ the threat.
 | I      | Redirects or numeric host forms lead the fetch to a private address | OAuth      |
 | D      | A host that answers slowly or with a huge body                      | OAuth      |
 
-#### Admin setup and the start of the image
+##### Admin setup and the start of the image
 
 | STRIDE | Threat                                                                                | Checked in                           |
 | ------ | ------------------------------------------------------------------------------------- | ------------------------------------ |
@@ -272,7 +283,7 @@ the threat.
 | D      | A failed migration that still starts the server                                       | Configuration and container image    |
 | E      | The server runs as root or can write its own files; forged forwarding headers trusted | Configuration and container image    |
 
-#### CI workflows, dependencies and the release
+##### CI workflows, dependencies and the release
 
 | STRIDE | Threat                                                                                        | Checked in   |
 | ------ | --------------------------------------------------------------------------------------------- | ------------ |
@@ -282,15 +293,15 @@ the threat.
 | E      | Workflow tokens with more permissions than needed; an unsigned image without provenance       | Supply chain |
 | D      | Known vulnerable dependencies that stay unpatched                                             | Supply chain |
 
-## Findings
+### Findings
 
-This section holds only open findings, and the counts in "Summary" are those of the open findings. A fixed finding is
+This section holds only open findings, and the counts in "Summary" of this part are those of the open findings. A fixed finding is
 deleted, and the rest of this report and the other documents are brought in line in the same change, as "Fixing a
 finding of the review report" in `step-plan-workflow.md` describes.
 
-### Access control and the entry points of requests
+#### Access control and the entry points of requests
 
-#### nit: `createUser()` and the write actions of folders check the form before the rights, so a refused caller sees form errors instead of "not found"
+##### nit: `createUser()` and the write actions of folders check the form before the rights, so a refused caller sees form errors instead of "not found"
 
 - Location: `src/features/users/actions.ts`, `createUser()`; `src/features/folder-roles/actions.ts`, `giveRole()` and
   `changeRole()`; `src/features/pages/actions.ts`, `createPage()`; `src/features/folders/actions.ts`, `createTab()`
@@ -323,7 +334,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   is still open.
 - Reference: OWASP A01:2025 Broken Access Control; ASVS 8.2.1; CWE-204.
 
-#### suggestion: `OPTIONS` on an MCP address lists `GET` and `DELETE` as allowed, though both answer 405
+##### suggestion: `OPTIONS` on an MCP address lists `GET` and `DELETE` as allowed, though both answer 405
 
 - Location: `src/app/mcp/[[...path]]/route.ts`, the exports `POST`, `GET` and `DELETE`; `src/features/mcp/http.ts`,
   `handleMcpRequest()`, the check of the method
@@ -344,7 +355,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   route with `OPTIONS` and the Suggestion names none.
 - Reference: ASVS 4.1.4 (Level 3); RFC 9110 section 10.2.1.
 
-#### Reviewed
+##### Reviewed
 
 - Files read: `src/proxy.ts`, `src/features/auth/session.ts`, `src/lib/auth.ts`, `src/lib/addresses.ts`, the
   `actions.ts` of all seven features (auth, folder-roles, folders, grants, oauth, pages, users), the `queries.ts` of
@@ -425,9 +436,9 @@ finding of the review report" in `step-plan-workflow.md` describes.
   checked together (ASVS 2.1.2, 2.2.3): a tab must belong to the folder of its page (composite foreign key), a redirect
   address to its client.
 
-### Browser security: headers, CSRF, caching and data sent to the client
+#### Browser security: headers, CSRF, caching and data sent to the client
 
-#### issue: the Content Security Policy sends `base-uri 'self'` where ASVS asks for `'none'`, without a reason in a spec
+##### issue: the Content Security Policy sends `base-uri 'self'` where ASVS asks for `'none'`, without a reason in a spec
 
 - Location: `next.config.ts`, `SECURITY_HEADERS`; `e2e/security-headers.spec.ts`, `SECURITY_HEADERS`;
   `scripts/image.sh`, the smoke test of the security headers; `spec/architecture.md`, section "Security headers"
@@ -448,7 +459,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   headers with its check for CSP violations and the smoke test of the image show that it works.
 - Reference: OWASP A02:2025 Security Misconfiguration; ASVS 3.4.3; `CON.10.A14`.
 
-#### issue: the answers of the MCP addresses carry no `Cache-Control: no-store`
+##### issue: the answers of the MCP addresses carry no `Cache-Control: no-store`
 
 - Location: `src/features/mcp/http.ts`, `refusal()`, `roleTooLow()` and `handleMcpRequest()` (the answers of
   `serveLegacy()` and of the handler of `getModernHandler()`)
@@ -472,7 +483,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   SDK can be changed in place.
 - Reference: OWASP A02:2025 Security Misconfiguration; ASVS 14.3.2, 14.2.2; CWE-525.
 
-#### issue: Client Components get whole `TabSummary` rows with fields they do not show
+##### issue: Client Components get whole `TabSummary` rows with fields they do not show
 
 - Location: `src/features/pages/components/NewPageView.tsx`, `NewPageView()`, the view "New page" of both the folder
   and the tab route; `src/features/pages/components/PageView.tsx`, `PageView()`;
@@ -495,7 +506,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
 - Reference: OWASP A01:2025 Broken Access Control; ASVS 15.3.1; CWE-213; the Next.js data security guide, "Passing data
   from server to client".
 
-#### suggestion: the modules that read the database or hold secrets do not import `server-only`
+##### suggestion: the modules that read the database or hold secrets do not import `server-only`
 
 - Location: `src/lib/db.ts`, `src/lib/auth.ts`, `src/lib/env.ts`, `src/lib/password-hash.ts`, every
   `src/features/*/service.ts` and `src/features/*/*-service.ts` and every `queries.ts` (with those of folder-roles,
@@ -521,7 +532,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
 - Reference: OWASP A06:2025 Insecure Design; the Next.js data security guide, "Preventing client-side execution of
   server-only code" and "Auditing".
 
-#### suggestion: a logout leaves wiki pages open in other tabs and clears nothing in the browser
+##### suggestion: a logout leaves wiki pages open in other tabs and clears nothing in the browser
 
 - Location: `src/features/auth/actions.ts`, `revalidateEverything()` and `logOut()`
 - Severity: Minor. It matters only on a shared computer, and the pages are `no-store` already.
@@ -538,7 +549,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   a Server Action can carry `Clear-Site-Data` was not checked.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 14.3.1; CWE-524.
 
-#### suggestion: the Content Security Policy has no `default-src`, `script-src` or `connect-src` at all
+##### suggestion: the Content Security Policy has no `default-src`, `script-src` or `connect-src` at all
 
 - Location: `next.config.ts`, `SECURITY_HEADERS`
 - Severity: Minor
@@ -561,7 +572,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   allowlist was not tried; only the check for CSP violations would show it.
 - Reference: ASVS 3.4.3, 3.4.7, 3.4.8; the Next.js guide on the Content Security Policy.
 
-#### nit: `/oauth/register` reads a JSON body of any media type, so another site can register clients from its visitors' browsers
+##### nit: `/oauth/register` reads a JSON body of any media type, so another site can register clients from its visitors' browsers
 
 - Location: `src/features/oauth/http.ts`, `handleRegister()`
 - Severity: Nit. The endpoint is public on purpose and needs no credentials; the only gain is spreading registrations
@@ -581,7 +592,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   it registers, which was not checked, and no test is named.
 - Reference: ASVS 3.5.2; RFC 7591 section 3.1; CWE-352.
 
-#### nit: `architecture.md` writes out the values of the security headers instead of pointing to `next.config.ts`
+##### nit: `architecture.md` writes out the values of the security headers instead of pointing to `next.config.ts`
 
 - Location: `spec/architecture.md`, section "Security headers"
 - Severity: Nit
@@ -596,7 +607,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   reference to `next.config.ts`.
 - Reference: `issue-report.md`, last item of the checklist.
 
-#### Reviewed
+##### Reviewed
 
 - Files read: `next.config.ts`, `src/proxy.ts`, `src/app/layout.tsx`, the error pages, every route handler,
   `src/features/oauth/http.ts`, `src/features/mcp/http.ts`, `src/features/oauth/components/`,
@@ -649,9 +660,9 @@ finding of the review report" in `step-plan-workflow.md` describes.
   the telemetry of Next.js, Prisma and Better Auth is off (ASVS 14.2.3); separate applications on different host names
   (ASVS 3.5.4) is a question of the deployment.
 
-### Login, passwords, sessions and users
+#### Login, passwords, sessions and users
 
-#### issue: the admin cannot end the sessions of another account
+##### issue: the admin cannot end the sessions of another account
 
 - Location: `src/features/users/` (no such action); `spec/users-and-login.md`, section "Current limits"
 - Severity: Minor. Every account can now change its own password and log out its other browsers at any time; only
@@ -669,7 +680,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
 - Confidence: Low. It needs a product decision: a new control for the admin, or the limit documented as a decision.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 7.4.5; `CON.10.A12`.
 
-#### issue: in the default configuration a single client can lock any known user, the admin included, out of the login
+##### issue: in the default configuration a single client can lock any known user, the admin included, out of the login
 
 - Location: `src/lib/client-address.ts`, `clientAddressGroup()`, the case of 0 trusted proxies;
   `src/features/auth/service.ts`, `reserveAttempt()`; `spec/users-and-login.md`, sections "Decisions" and "Current
@@ -696,7 +707,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
 - Alternatives: let a client that holds a valid earlier session pass the wait per name.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 6.1.1, 6.3.1; CWE-645; NIST SP 800-63B-4 3.2.2.
 
-#### issue: the minimum password length is 8, not the 15 NIST asks for a single factor, without a documented reason
+##### issue: the minimum password length is 8, not the 15 NIST asks for a single factor, without a documented reason
 
 - Location: `src/features/users/limits.ts`, `PASSWORD_MIN_LENGTH`; `src/features/users/schema.ts`,
   `passwordSchema`; `spec/users-and-login.md`, section "Passwords"
@@ -715,7 +726,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   product decision.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 6.2.1; NIST SP 800-63B-4 3.1.1.2; CWE-521.
 
-#### issue: a login does not end the session that the request already carries
+##### issue: a login does not end the session that the request already carries
 
 - Location: `src/features/auth/service.ts`, `logIn()`, the call of `auth.api.signInUsername()`
 - Severity: Minor. It needs a login sent while already logged in (a stale tab, or another user in the same browser),
@@ -734,7 +745,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   not checked, nor whether a failed login should also end the old session.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 7.2.4; CWE-613.
 
-#### issue: the session cookie uses the prefix `__Secure-`, not `__Host-`, and no spec says why
+##### issue: the session cookie uses the prefix `__Secure-`, not `__Host-`, and no spec says why
 
 - Location: `src/lib/auth.ts`, `createAuth()` (`useSecureCookies`); `spec/users-and-login.md`, section "Sessions"
 - Severity: Minor
@@ -753,7 +764,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   that a `__Host-` name needs were read in its code but not tried.
 - Reference: OWASP A02:2025 Security Misconfiguration; ASVS 3.3.3; NIST SP 800-63B-4 5.1.1.
 
-#### issue: one client can fill the queue of the password hashing and make every login "busy"
+##### issue: one client can fill the queue of the password hashing and make every login "busy"
 
 - Location: `src/lib/password-hash.ts`, `MAX_CONCURRENT_HASHES`, `MAX_HASH_WAIT_MS` and `createLimiter()`;
   `spec/container-image.md`, section "What the environment has to provide"
@@ -772,7 +783,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   at once when the queue is long is a trade-off.
 - Reference: OWASP A06:2025 Insecure Design; ASVS 15.2.2, 2.4.1; CWE-770; `CON.10.A17`.
 
-#### issue: the session rules document no inactivity timeout and no number of sessions per user
+##### issue: the session rules document no inactivity timeout and no number of sessions per user
 
 - Location: `spec/users-and-login.md`, section "Sessions"; `src/lib/auth.ts`, `createAuth()`, the `session` options
   (`SESSION_LIFETIME_SECONDS`, `disableSessionRefresh`)
@@ -788,7 +799,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   and the reason of the user.
 - Reference: ASVS 7.1.1, 7.1.2, 7.3.1; `CON.10.A3`.
 
-#### issue: first passwords never expire
+##### issue: first passwords never expire
 
 - Location: `src/features/users/service.ts`, `createUser()` and `ensureAdmin()`;
   `spec/users-and-login.md`, section "Current limits"
@@ -806,7 +817,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   product decision, or the limit is documented.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 6.4.1; NIST SP 800-63B-4 3.1.1.1.
 
-#### issue: the missing second factor and the missing notification of a password change are limits without a reason
+##### issue: the missing second factor and the missing notification of a password change are limits without a reason
 
 - Location: `spec/users-and-login.md`, section "Current limits" ("no mail, no TOTP, no passkeys, …")
 - Severity: Minor
@@ -821,7 +832,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
 - Confidence: Low. Accepting the risk or adding TOTP is a decision for the user.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 6.3.3; `CON.10.A16`, `CON.10.A1`.
 
-#### issue: every session stores a client address from an unchecked `X-Forwarded-For`, and the user agent, which no spec mentions
+##### issue: every session stores a client address from an unchecked `X-Forwarded-For`, and the user agent, which no spec mentions
 
 - Location: `src/lib/auth.ts`, `createAuth()`, the `advanced` options (no `ipAddress`)
 - Severity: Minor
@@ -840,7 +851,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   needs a database hook of Better Auth that was not tried.
 - Reference: ASVS 14.1.1; CWE-348; CWE-359.
 
-#### suggestion: the seed resets the admin to a public password on whatever database `DATABASE_URL` names
+##### suggestion: the seed resets the admin to a public password on whatever database `DATABASE_URL` names
 
 - Location: `prisma/seed.ts`, `main()`, the upsert of the known users; `prisma/known-users.ts`, `KNOWN_ADMIN` and
   `KNOWN_USER`
@@ -855,7 +866,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   development or tests seeds with `NODE_ENV=production`.
 - Reference: ASVS 6.3.2; CWE-798.
 
-#### suggestion: session tokens are stored in plain text, next to the secret that signs them
+##### suggestion: session tokens are stored in plain text, next to the secret that signs them
 
 - Location: `prisma/schema.prisma`, models `Session` and `AuthSecret`; `src/lib/auth.ts`, `readSecret()`
 - Severity: Minor
@@ -869,7 +880,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   against the decision that a container needs only `DATABASE_URL` and `HIPPOWIKI_ADMIN_PASSWORD`.
 - Reference: ASVS 13.3.2; CWE-312.
 
-#### nit: the spec says passwords are not normalised, but not why
+##### nit: the spec says passwords are not normalised, but not why
 
 - Location: `spec/users-and-login.md`, section "Passwords"
 - Severity: Nit
@@ -881,7 +892,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
 - Suggestion (optional): add the reason as a decision.
 - Confidence: Low. The reason for the decision has to come from the user.
 
-#### question: do password managers fill the login form and save the new password at the change?
+##### question: do password managers fill the login form and save the new password at the change?
 
 - Location: `src/features/auth/components/LoginForm.tsx`, `LoginForm`, the name and password fields;
   `src/features/auth/components/ChangePasswordForm.tsx`, `ChangePasswordForm`, the three password fields
@@ -893,7 +904,7 @@ finding of the review report" in `step-plan-workflow.md` describes.
   the change form.
 - Reference: ASVS 6.2.7.
 
-#### Reviewed
+##### Reviewed
 
 - Files read: `src/lib/auth.ts`, `src/lib/password-hash.ts`, `src/lib/client-address.ts`,
   `src/lib/client-address-probe.ts`, `src/lib/names.ts`, the files of `src/features/auth/` and `src/features/users/`,
@@ -977,9 +988,9 @@ finding of the review report" in `step-plan-workflow.md` describes.
   ends it; a logout whose session cannot be read fails like one that cannot end it. Fixed after the review and checked
   by the unit tests of `logIn()` and `logOut()` in `src/features/auth/service.test.ts`.
 
-### Connected apps
+#### Connected apps
 
-#### issue: a successful use of an access token, and a bearer value that does not look like one, leave no log line, and refused access tokens are logged without the client address
+##### issue: a successful use of an access token, and a bearer value that does not look like one, leave no log line, and refused access tokens are logged without the client address
 
 - Location: `src/features/grants/service.ts`, `authenticateAccessToken()`, its check of the shape of the bearer value;
   `src/features/mcp/http.ts`, `handleMcpRequest()`
@@ -1007,7 +1018,7 @@ false, error: { code: "missing-token" } };` with no log call.
   with the address group on every line is a trade-off between noise and privacy that the user has to decide.
 - Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.3.1, 16.3.2, 16.2.1; CWE-778.
 
-#### issue: the admin has no way to stop the grants of another user
+##### issue: the admin has no way to stop the grants of another user
 
 - Location: `src/features/grants/service.ts`, `revokeGrant()`; `spec/connected-apps.md`, sections "The own apps only"
   and "Current limits"
@@ -1031,7 +1042,7 @@ false, error: { code: "missing-token" } };` with no log call.
   user, and offers a documented decision instead, so the user has to choose.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 7.4.5, 7.4.2; CWE-613.
 
-#### nit: a bearer value of the wrong shape is answered without `error="invalid_token"`
+##### nit: a bearer value of the wrong shape is answered without `error="invalid_token"`
 
 - Location: `src/features/grants/service.ts`, `authenticateAccessToken()` and `bearerTokenOf()`;
   `src/features/mcp/http.ts`, `handleMcpRequest()`, the case `missing-token`; `spec/connected-apps.md`, section "The
@@ -1052,7 +1063,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   see, and how clients react to `invalid_token` instead of a bare challenge was not tried.
 - Reference: RFC 6750 section 3.1.
 
-#### Reviewed
+##### Reviewed
 
 - Files read: `src/features/grants/` (`service.ts`, `schema.ts`, `forms.ts`, `actions.ts`, `queries.ts` and the
   components), `src/app/account/page.tsx`, `src/features/mcp/http.ts`, `src/app/mcp/[[...path]]/route.ts`,
@@ -1099,9 +1110,9 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   their audience (ASVS 9.2.3) are checked by the separate prefixes and hash columns and by accepting them only at the
   one MCP address of their grant; the user of an access token is the user of its grant (ASVS 10.3.3).
 
-### OAuth
+#### OAuth
 
-#### issue: custom redirect schemes are filtered with a list of forbidden schemes, so dangerous handlers of the operating system are accepted
+##### issue: custom redirect schemes are filtered with a list of forbidden schemes, so dangerous handlers of the operating system are accepted
 
 - Location: `src/features/oauth/schema.ts`, `FORBIDDEN_SCHEMES` and `parseRedirectUri()`; `spec/oauth.md`, section
   "Clients"
@@ -1121,7 +1132,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   such as `cursor://`, which the comment of `parseRedirectUri()` names as its example.
 - Reference: OWASP A06:2025 Insecure Design; ASVS 1.2.2, 2.2.1, 10.4.7; CWE-184; RFC 8252 sections 7.1 and 8.4.
 
-#### issue: the consent page shows no verified identity of the client and no warning for clients it cannot verify or for loopback addresses
+##### issue: the consent page shows no verified identity of the client and no warning for clients it cannot verify or for loopback addresses
 
 - Location: `src/app/oauth/authorize/page.tsx`, `AuthorizePage()`; `src/features/oauth/queries.ts`, `loadConsent()`;
   `src/features/oauth/schema.ts`, `redirectTargetOf()`
@@ -1143,7 +1154,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 10.4.7, 10.7.2; CWE-451; the client ID metadata document
   draft, section 10.6; MCP specification 2026-07-28, "Security Considerations", "Localhost Redirect URI Risks".
 
-#### issue: a repeated parameter of the authorization request counts as missing instead of refusing the request
+##### issue: a repeated parameter of the authorization request counts as missing instead of refusing the request
 
 - Location: `src/features/oauth/forms.ts`, `readAuthorizationParams()` and `readAuthorizationFormData()`;
   `src/features/oauth/authorization-service.ts`, `checkAuthorizationRequest()`
@@ -1163,7 +1174,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   actions share, the unit tests in `forms.test.ts` state the current rule, and the Suggestion names no test.
 - Reference: OWASP A01:2025 Broken Access Control; RFC 6749 section 3.1; RFC 8707 section 2; CWE-235.
 
-#### issue: client names keep bidi, format and control characters and can fake text on the consent page
+##### issue: client names keep bidi, format and control characters and can fake text on the consent page
 
 - Location: `src/features/oauth/schema.ts`, `clientNameOf()`; `src/app/oauth/authorize/page.tsx`, `AuthorizePage()`,
   the sentence with the name of the client
@@ -1183,7 +1194,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   already stored with clients and grants stay as they are.
 - Reference: OWASP A06:2025 Insecure Design; ASVS 10.7.2; CWE-451; CWE-1007.
 
-#### issue: the token endpoint and the registration read a body of any size into memory when it has no `Content-Length`
+##### issue: the token endpoint and the registration read a body of any size into memory when it has no `Content-Length`
 
 - Location: `src/features/oauth/http.ts`, `readBody()`, used by `handleToken()` and `handleRegister()`
 - Severity: Minor. Both endpoints are public, but a reverse proxy usually caps request bodies.
@@ -1201,7 +1212,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   route, which was not tried, and no test sends a body without `Content-Length`.
 - Reference: OWASP A06:2025 Insecure Design; ASVS 15.2.2; CWE-770.
 
-#### issue: using a code a second time does not revoke the tokens issued with it
+##### issue: using a code a second time does not revoke the tokens issued with it
 
 - Location: `src/features/oauth/token-service.ts`, `exchangeCode()`, the read and the conditional delete of the code;
   `spec/oauth.md`, sections "Codes" and "Decisions"
@@ -1221,7 +1232,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   column of `OAuthCode`, and offers a documented decision instead.
 - Reference: OWASP A07:2025 Authentication Failures; ASVS 10.4.2; RFC 6749 section 4.1.2; CWE-294.
 
-#### issue: a forged refresh token that names a grant revokes that grant
+##### issue: a forged refresh token that names a grant revokes that grant
 
 - Location: `src/features/oauth/token-service.ts`, `refreshGrant()`, the revocation on reuse before the check of the
   client; `spec/oauth.md`, section "Refresh"
@@ -1240,7 +1251,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   reuse of older refresh tokens, a risk the user has to accept or reject.
 - Reference: OWASP A07:2025 Authentication Failures; RFC 9700 section 4.14.2; CWE-400.
 
-#### issue: registrations have a limit per address group but none overall
+##### issue: registrations have a limit per address group but none overall
 
 - Location: `src/features/oauth/clients-service.ts`, `reserveRegistration()` and `registerClient()`; `spec/oauth.md`,
   section "Clients"
@@ -1258,7 +1269,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   then blocks registrations for everyone need a decision.
 - Reference: OWASP A06:2025 Insecure Design; ASVS 2.4.1; CWE-770.
 
-#### suggestion: that metadata documents may come from any host is not written down as a decision, and a failed fetch is repeated on every page load
+##### suggestion: that metadata documents may come from any host is not written down as a decision, and a failed fetch is repeated on every page load
 
 - Location: `src/features/oauth/metadata-fetch.ts`, `fetchMetadataDocument()` and `fetchWithin()`;
   `src/features/oauth/clients-service.ts`, `findMetadataClient()`, the branch of a failed fetch; `spec/oauth.md`,
@@ -1276,7 +1287,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   failure needs a store and makes a short outage of a client last longer.
 - Reference: ASVS 1.3.6, 13.2.4, 15.1.3; CWE-918.
 
-#### question: should dynamic registration stay switched on?
+##### question: should dynamic registration stay switched on?
 
 - Location: `spec/oauth.md`, sections "Clients" and "Decisions"
 - Severity: Minor
@@ -1288,7 +1299,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   or mark registered clients as not verified on the consent page.
 - Reference: MCP specification 2026-07-28, "Client Registration"; ASVS 10.4.7.
 
-#### nit: for a loopback address the comparison also ignores user name, password, fragment and `..`
+##### nit: for a loopback address the comparison also ignores user name, password, fragment and `..`
 
 - Location: `src/features/oauth/schema.ts`, `isRedirectUriOf()`
 - Severity: Nit. The code still goes only to the loopback host.
@@ -1304,7 +1315,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   Suggestion names no test of `isRedirectUriOf()`.
 - Reference: ASVS 10.4.1; RFC 9700 section 4.1.3; RFC 8252 section 7.3.
 
-#### nit: the authorization response rewrites the query of the redirect address
+##### nit: the authorization response rewrites the query of the redirect address
 
 - Location: `src/features/oauth/schema.ts`, `authorizationResponseUrl()`
 - Severity: Nit
@@ -1315,7 +1326,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 - Confidence: Medium. Appending instead of setting changes what happens when the registered query already holds
   `code`, `state` or `iss` (today replaced, then repeated), which is not decided.
 
-#### nit: the metadata has no `response_modes_supported`, and `response_mode` is ignored
+##### nit: the metadata has no `response_modes_supported`, and `response_mode` is ignored
 
 - Location: `src/features/oauth/http.ts`, `authorizationServerMetadata()`
 - Severity: Nit
@@ -1329,7 +1340,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   touches `AUTHORIZATION_PARAMS` and `checkAuthorizationRequest()`, which the Suggestion does not name.
 - Reference: RFC 8414 section 2; ASVS 10.4.12.
 
-#### nit: the comparison of `resource` is case-sensitive in scheme and host
+##### nit: the comparison of `resource` is case-sensitive in scheme and host
 
 - Location: `src/features/oauth/schema.ts`, `parseMcpResource()`, reached through `mcpAddressOf()` in
   `src/features/oauth/issuer.ts` at the authorization (`src/features/oauth/authorization-service.ts`,
@@ -1344,7 +1355,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 - Confidence: Medium. It changes the rule of `oauth.md` that `resource` must be exactly the MCP address, touches three
   comparisons, and the Suggestion names no test.
 
-#### nit: the spec promises that the grant stays after two refreshes at the same time, which holds only if both read before the swap
+##### nit: the spec promises that the grant stays after two refreshes at the same time, which holds only if both read before the swap
 
 - Location: `spec/oauth.md`, section "Refresh"; `src/features/oauth/token-service.ts`, `refreshGrant()`, its doc
   comment, the comparison of the hash and the conditional swap
@@ -1358,7 +1369,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   at the same time succeed, and the grant stays" in `integration/oauth-service.test.ts` runs six refreshes at once
   and asserts the broader promise, so it may fail now and then, which the Suggestion does not address.
 
-#### nit: an `invalid_client` answer with 401 has no `WWW-Authenticate`, and repeated keys in a JSON body are not refused
+##### nit: an `invalid_client` answer with 401 has no `WWW-Authenticate`, and repeated keys in a JSON body are not refused
 
 - Location: `src/features/oauth/http.ts`, `readTokenParams()`, and `handleToken()`, the case `invalid-client`
 - Severity: Nit
@@ -1372,7 +1383,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   that `oauth.md` states in "The token endpoint".
 - Reference: RFC 6749 section 5.2.
 
-#### nit: `oauth.md` repeats constants that no operator relies on, and places the cleanup of unused clients under registration only
+##### nit: `oauth.md` repeats constants that no operator relies on, and places the cleanup of unused clients under registration only
 
 - Location: `spec/oauth.md`, section "Clients"
 - Severity: Nit
@@ -1385,7 +1396,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   kinds of client, and `npm run docs:check` checks the reference to the file.
 - Reference: `issue-report.md`, last item of the checklist.
 
-#### Reviewed
+##### Reviewed
 
 - Files read: `src/features/oauth/` (`authorization-service.ts`, `token-service.ts`, `clients-service.ts`,
   `cleanup-service.ts`, `rows.ts`, `http.ts`, `schema.ts`, `metadata-fetch.ts`, `public-address.ts`,
@@ -1461,9 +1472,9 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   so ASVS 10.1, 10.2, 10.5 and 10.6 do not apply; the resource server needs no particular strength of authentication
   (ASVS 10.3.4).
 
-### MCP server
+#### MCP server
 
-#### suggestion: `list_folder` has no paging
+##### suggestion: `list_folder` has no paging
 
 - Location: `src/features/mcp/tools.ts`, `listFolder()`
 - Severity: Nit
@@ -1475,7 +1486,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   unlimited counts in "Content".
 - Reference: ASVS 15.2.2; CWE-770.
 
-#### nit: the server advertises `tools.listChanged: true` but can never send the notification
+##### nit: the server advertises `tools.listChanged: true` but can never send the notification
 
 - Location: `src/features/mcp/server.ts`, `createWikiServer()`, the call of `new McpServer()`
 - Severity: Nit
@@ -1487,7 +1498,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 - Confidence: High. The SDK keeps an explicit `false` and uses `true` only when the value is unset, both paths build
   the server with `createWikiServer()`, and the named `initialize` test shows it.
 
-#### Reviewed
+##### Reviewed
 
 - Files read: `src/features/mcp/http.ts`, `tools.ts` (split since into `tools.ts`, `tool-schemas.ts` and
   `server.ts`), `queries.ts`, `http.test.ts`, `src/app/mcp/[[...path]]/route.ts`, `spec/mcp.md`, the token check, the
@@ -1578,9 +1589,9 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   server is built per request and nothing is shared between callers, and a grant reaches only the folder of its
   address (`folder-roles.md`, "MCP" and "Decisions").
 
-### Content: pages, folders, tabs, deletion and rendering
+#### Content: pages, folders, tabs, deletion and rendering
 
-#### issue: there is no limit on the number of folders, tabs, pages and deleted pages, the lists are not paged, and no spec says so
+##### issue: there is no limit on the number of folders, tabs, pages and deleted pages, the lists are not paged, and no spec says so
 
 - Location: `src/features/pages/service.ts`, `listFolderPages()`, `listTabPages()`, `listAllFolderPages()` and
   `listDeletedPages()`; `src/features/folders/service.ts`, `listFolders()` and `listTabs()`;
@@ -1602,7 +1613,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 - Confidence: Low. Adding limits and paging or recording their absence as a decision is a product choice.
 - Reference: OWASP A06:2025 Insecure Design; ASVS 2.1.3, 2.4.1; CWE-770.
 
-#### nit: writes read the page back in a second statement
+##### nit: writes read the page back in a second statement
 
 - Location: `src/features/pages/service.ts`, `saveContentChange()` (the read after `storeContentChange()`), the end of
   `updatePageContent()` and of `revertPage()`, `moveOrRenamePage()` with `storeMoveOrRename()`, and `restorePage()`;
@@ -1622,7 +1633,7 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
 - Confidence: Medium. The fix touches four writes and the retry path of `writeRename()`, and no existing test can show
   that the gap between write and read is closed.
 
-#### Reviewed
+##### Reviewed
 
 - Files read: `MarkdownContent.tsx`, `PageView.tsx`, `DeletedPageView.tsx`, the list components, `derive.ts`,
   `schema.ts`, `forms.ts`, `limits.ts`, `actions.ts`, `service.ts` and `queries.ts` of pages and folders,
@@ -1698,9 +1709,9 @@ Bearer resource_metadata="…"` challenge without an error and `{"error":"unauth
   SVG from users is rendered (a `data:` image is dropped, other hosts are blocked by the CSP), so ASVS 1.3.4 does not
   apply; the limits of content and names are implemented as documented (ASVS 2.3.2).
 
-### Logging, errors and failure handling
+#### Logging, errors and failure handling
 
-#### issue: a logout reports success and logs "session ended" although the session row could not be deleted
+##### issue: a logout reports success and logs "session ended" although the session row could not be deleted
 
 - Location: `src/features/auth/service.ts`, `logOut()`; `src/features/auth/actions.ts`, `logOut()`
 - Severity: Minor. It needs a database failure at the moment of the logout and another copy of the cookie; the
@@ -1721,7 +1732,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Reference: OWASP A07:2025 Authentication Failures; OWASP A10:2025 Mishandling of Exceptional Conditions; ASVS
   7.4.1, 16.5.3; CWE-613; CWE-636.
 
-#### issue: database queries have no time limit, so a database that stops answering makes requests hang
+##### issue: database queries have no time limit, so a database that stops answering makes requests hang
 
 - Location: `src/lib/db.ts`, `createClient()`; `src/app/api/health/route.ts`, `GET()`
 - Severity: Minor. It concerns availability; nothing is let through.
@@ -1740,7 +1751,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   tried, and the values of the limits are a trade-off against long queries that are legitimate.
 - Reference: OWASP A10:2025 Mishandling of Exceptional Conditions; ASVS 16.5.2; CWE-400; `CON.10.A13`.
 
-#### issue: errors the code does not catch, and the security messages of Next.js, bypass pino and reach stderr as plain text
+##### issue: errors the code does not catch, and the security messages of Next.js, bypass pino and reach stderr as plain text
 
 - Location: no `instrumentation.ts` in the project; `spec/architecture.md`, section "Validation and errors"
 - Severity: Minor
@@ -1761,7 +1772,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   a foreign `Origin`, which it only prints with `console.error`, so that part of the problem may remain.
 - Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.2.4, 16.3.4, 16.5.4 (Level 3); CWE-778.
 
-#### issue: errors logged through Better Auth lose their message and stack
+##### issue: errors logged through Better Auth lose their message and stack
 
 - Location: `src/lib/auth.ts`, the `logger` option of `createAuth()`
 - Severity: Minor
@@ -1778,7 +1789,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   expectation changes.
 - Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.3.4; CWE-778.
 
-#### issue: several security events are logged without the actor or the client address, or not at all
+##### issue: several security events are logged without the actor or the client address, or not at all
 
 - Location: `src/features/oauth/actions.ts`, `deny()`; the writes of `src/features/folders/service.ts`
   (`createFolder()`, `renameFolder()`, `createTab()`, `renameTab()`) and `src/features/pages/service.ts` (for example
@@ -1811,7 +1822,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.2.1, 16.3.2, 16.3.3; `OPS.1.1.5.A3`;
   OWASP MCP08:2025 Lack of Audit and Telemetry; CWE-778.
 
-#### issue: rejected input at the public OAuth endpoints is never logged, and the rule not to log it has no reason
+##### issue: rejected input at the public OAuth endpoints is never logged, and the rule not to log it has no reason
 
 - Location: `spec/architecture.md`, section "Reads and writes" ("A malformed id and invalid input are not logged");
   `src/features/oauth/token-service.ts`, `exchangeCode()` and `refreshGrant()`; `src/features/oauth/http.ts`,
@@ -1828,7 +1839,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   reason for not logging form input still has to be worded as a decision.
 - Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.3.3; CWE-778.
 
-#### issue: no spec describes the logs: format, time, levels, destination, retention and access
+##### issue: no spec describes the logs: format, time, levels, destination, retention and access
 
 - Location: `spec/container-image.md`, section "What the environment has to provide"; `spec/architecture.md`,
   section "Validation and errors"; `src/lib/logger.ts`, `createLogger()`
@@ -1849,7 +1860,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.1.1, 16.2.2, 16.2.3, 16.4.2, 16.4.3;
   `OPS.1.1.5.A1`, `OPS.1.1.5.A3`, `OPS.1.1.5.A4`.
 
-#### issue: a password typed into the name field is logged as the user name of a failed login
+##### issue: a password typed into the name field is logged as the user name of a failed login
 
 - Location: `src/features/auth/service.ts`, `logIn()`, the two warnings "login refused: unknown name or wrong password"
   and the warning "too many password hashes are running, login not checked"
@@ -1867,7 +1878,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   losing the readable name in the log.
 - Reference: OWASP A09:2025 Security Logging and Alerting Failures; ASVS 16.2.5; CWE-532.
 
-#### suggestion: the logger has no redaction, so a secret inside an error object would be logged
+##### suggestion: the logger has no redaction, so a secret inside an error object would be logged
 
 - Location: `src/lib/logger.ts`, `createLogger()`
 - Severity: Nit. No reachable path was found; it is defence in depth.
@@ -1881,7 +1892,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   `err`, after its error serialiser, was not tried.
 - Reference: ASVS 16.2.5; CWE-532.
 
-#### nit: a failed fetch of a metadata document does not tell a TLS failure from a refused connection
+##### nit: a failed fetch of a metadata document does not tell a TLS failure from a refused connection
 
 - Location: `src/features/oauth/metadata-fetch.ts`, `fetchWithin()`, the `error` handlers of the request and the
   response
@@ -1895,7 +1906,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   shows the code in the reason.
 - Reference: ASVS 16.3.4.
 
-#### Reviewed
+##### Reviewed
 
 - Files read: `src/lib/logger.ts`, `result.ts`, `db-errors.ts`, `db.ts`, `env.ts`, `auth.ts`, `password-hash.ts`,
   `client-address-probe.ts`, `src/proxy.ts`, the error pages, every route handler, every `catch` in `src/` and
@@ -1933,9 +1944,9 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Secrets: no log call passes a password, token, code, verifier, cookie or `Authorization` header; the probe of
   forwarding headers uses an allowlist of headers.
 
-### Configuration and container image
+#### Configuration and container image
 
-#### issue: `HIPPOWIKI_ADMIN_PASSWORD` stays in the environment of the running server
+##### issue: `HIPPOWIKI_ADMIN_PASSWORD` stays in the environment of the running server
 
 - Location: `scripts/image-start.sh`, the `exec node server.js` at the end; `spec/container-image.md`, sections
   "Configuration" and "What the environment has to provide"
@@ -1958,7 +1969,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   `podman exec`, so the named check shows it.
 - Reference: OWASP A02:2025 Security Misconfiguration; ASVS 13.3.2; CWE-526; `SYS.1.6.A8`.
 
-#### issue: the server uses the role of the migration, with rights to change the schema, in the documented setup a superuser
+##### issue: the server uses the role of the migration, with rights to change the schema, in the documented setup a superuser
 
 - Location: `spec/container-image.md`, section "Configuration"; `scripts/image-start.sh`; `src/lib/db.ts`,
   `createClient()`
@@ -1978,7 +1989,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   of `container-image.md`, so the choice between a sentence in the spec and a second variable needs a decision.
 - Reference: OWASP A02:2025 Security Misconfiguration; ASVS 13.2.2; CWE-250.
 
-#### issue: the base image is pinned by a tag, not a digest, and its fixes reach production only with a release
+##### issue: the base image is pinned by a tag, not a digest, and its fixes reach production only with a release
 
 - Location: `Containerfile`, the first `FROM` line (stage `base`); `spec/container-image.md`, sections "Image" and
   "Publishing"
@@ -1996,7 +2007,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Reference: OWASP A03:2025 Software Supply Chain Failures; OWASP A08:2025 Software or Data Integrity Failures; ASVS
   15.2.1; CWE-494; `SYS.1.6.A6`, `SYS.1.6.A14`.
 
-#### issue: an invalid value of the environment does not stop the server itself, only the admin setup stops the container
+##### issue: an invalid value of the environment does not stop the server itself, only the admin setup stops the container
 
 - Location: `src/lib/env.ts`, `getServerEnv()`; `spec/container-image.md`, section "Configuration"
 - Severity: Minor
@@ -2015,7 +2026,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Reference: OWASP A02:2025 Security Misconfiguration; OWASP A10:2025 Mishandling of Exceptional Conditions;
   CWE-1188.
 
-#### suggestion: a read-only root file system works, but is neither documented nor tested
+##### suggestion: a read-only root file system works, but is neither documented nor tested
 
 - Location: `Containerfile`, the stage `app`, the step that creates `.next/cache`; `spec/container-image.md`, section
   "Image"
@@ -2030,7 +2041,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   not tried on the older Podman of the runner.
 - Reference: `SYS.1.6.A23`.
 
-#### suggestion: the spec names no secret store for `DATABASE_URL` and the admin password
+##### suggestion: the spec names no secret store for `DATABASE_URL` and the admin password
 
 - Location: `spec/container-image.md`, section "What the environment has to provide"
 - Severity: Minor
@@ -2044,7 +2055,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   decision.
 - Reference: ASVS 13.3.1, 13.3.2; CWE-526; `SYS.1.6.A8`.
 
-#### suggestion: the final image carries `npm`, `npx` and `apt`
+##### suggestion: the final image carries `npm`, `npx` and `apt`
 
 - Location: `Containerfile`, the stage `app`
 - Severity: Nit
@@ -2057,7 +2068,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   checked, and `apt` stays.
 - Reference: ASVS 15.2.3.
 
-#### nit: `container-image.md` restates the tag of the base image, and does not say what several instances need
+##### nit: `container-image.md` restates the tag of the base image, and does not say what several instances need
 
 - Location: `spec/container-image.md`, sections "Image" and "What the environment has to provide"
 - Severity: Nit
@@ -2071,7 +2082,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   of Next.js on self-hosting, which was read but not tried.
 - Reference: `issue-report.md`, last item of the checklist.
 
-#### Reviewed
+##### Reviewed
 
 - Files read: `Containerfile`, `.containerignore`, `scripts/image-start.sh`, `image-migrate.sh`, `image-admin.sh`,
   `image.sh`, `db.sh`, `scripts/Containerfile`, `scripts/admin.ts`, `src/lib/env.ts`, `client-address.ts`, `db.ts`,
@@ -2113,9 +2124,9 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   `scripts/check.ts`, development tools, and in the test helpers `e2e/support/database.ts` and
   `e2e/support/container.ts`, all with fixed arguments or a fixed list of commands (ASVS 1.2.5).
 
-### Supply chain: dependencies, CI and release
+#### Supply chain: dependencies, CI and release
 
-#### issue: no security contact and no private way to report vulnerabilities
+##### issue: no security contact and no private way to report vulnerabilities
 
 - Location: the root of the repository (no SECURITY.md); `README.md`, all sections
 - Severity: Minor. It is documentation only, but the project publishes an image that others run.
@@ -2131,7 +2142,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Confidence: Low. The private channel, the supported versions and the time to answer are choices of the maintainer.
 - Reference: OWASP A03:2025 Software Supply Chain Failures; BSI TR-03185-2 VM.01; ISO/IEC 29147.
 
-#### issue: no rule for how fast vulnerable dependencies are fixed, and nothing in CI detects them
+##### issue: no rule for how fast vulnerable dependencies are fixed, and nothing in CI detects them
 
 - Location: `spec/step-plan-workflow.md`, section "Rules for every step"; `.github/dependabot.yml`; `.github/workflows/`
 - Severity: Minor. It is a gap in the documentation, and the alerts of Dependabot may be switched on in the settings.
@@ -2152,7 +2163,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Confidence: Low. The time frames are a decision of the process.
 - Reference: OWASP A03:2025 Software Supply Chain Failures; ASVS 15.1.1, 15.2.1; CWE-1395.
 
-#### issue: users cannot check that a published image is the one CI built, and "no signing" has no reason
+##### issue: users cannot check that a published image is the one CI built, and "no signing" has no reason
 
 - Location: `spec/container-image.md`, section "Current limits"; `spec/roadmap.md`, section "Container Image";
   `README.md`, section "Publishing"; `.github/workflows/container_image.yml`, the step "Write the pushed image to the
@@ -2172,7 +2183,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Reference: OWASP A03:2025 Software Supply Chain Failures; OWASP A08:2025 Software or Data Integrity Failures; BSI
   TR-03185-2 BR.03; `SYS.1.6.A12`; CWE-494.
 
-#### issue: the release job holds `packages: write` for every trigger, and the spec overstates how the token is kept from the code
+##### issue: the release job holds `packages: write` for every trigger, and the spec overstates how the token is kept from the code
 
 - Location: `.github/workflows/container_image.yml`, job `container_image`, its `permissions` and the comment above
   them; `spec/container-image.md`, section "Publishing"
@@ -2193,7 +2204,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   has to carry the checked image from one job to the next without a rebuild, which was not tried.
 - Reference: OWASP A03:2025 Software Supply Chain Failures; CWE-272.
 
-#### issue: GitHub actions are pinned to tags, not commit SHAs
+##### issue: GitHub actions are pinned to tags, not commit SHAs
 
 - Location: `.github/workflows/*.yml`, every `uses:` line (`actions/checkout@v7`, `actions/setup-node@v7`,
   `actions/upload-artifact@v7`)
@@ -2211,7 +2222,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Reference: OWASP A03:2025 Software Supply Chain Failures; OWASP A08:2025 Software or Data Integrity Failures;
   CWE-829.
 
-#### issue: no list of the third-party components of the published image
+##### issue: no list of the third-party components of the published image
 
 - Location: the repository and the releases; `Containerfile`, the stage `migrate-tools`
 - Severity: Minor
@@ -2227,7 +2238,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   job has run on GitHub.
 - Reference: OWASP A03:2025 Software Supply Chain Failures; ASVS 15.1.2; BSI TR-03185-2 QA.01; BSI TR-03183-2.
 
-#### issue: no changelog, and the release version is not tied to the version of the project
+##### issue: no changelog, and the release version is not tied to the version of the project
 
 - Location: the repository (no CHANGELOG.md); `package.json`, `version`; `spec/container-image.md`, section
   "Publishing"
@@ -2243,7 +2254,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Confidence: Low. The Suggestion offers a changelog or a rule for release notes, a choice of the process.
 - Reference: BSI TR-03185-2 BR.02, BR.04.
 
-#### issue: changes reach `main` without a second review, and this is not documented as a decision
+##### issue: changes reach `main` without a second review, and this is not documented as a decision
 
 - Location: `CLAUDE.md`, section "Git Handling"; `spec/step-plan-workflow.md`, section "Step plans"
 - Severity: Minor. It describes the process of a single maintainer.
@@ -2260,7 +2271,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Confidence: Low. Documenting it as a decision or requiring pull requests is a choice of the maintainer's process.
 - Reference: BSI TR-03185-2 QA.06; OWASP A03:2025 Software Supply Chain Failures.
 
-#### suggestion: new versions of dependencies arrive without a waiting period, and all install scripts run
+##### suggestion: new versions of dependencies arrive without a waiting period, and all install scripts run
 
 - Location: `.github/dependabot.yml` (no `cooldown`); `.npmrc`
 - Severity: Minor
@@ -2275,7 +2286,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   packages that need scripts was not tried.
 - Reference: OWASP A03:2025 Software Supply Chain Failures; CWE-829.
 
-#### suggestion: a release can publish an image of any commit, and the migration tools are resolved at release time
+##### suggestion: a release can publish an image of any commit, and the migration tools are resolved at release time
 
 - Location: `.github/workflows/container_image.yml`, the trigger `release` and the checkout step of the job
   `container_image`; `Containerfile`, the stage `migrate-tools`; `spec/container-image.md`, section "Decisions"
@@ -2290,7 +2301,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   `container-image.md`, and protecting `v*` tags is a setting of the repository.
 - Reference: OWASP A03:2025 Software Supply Chain Failures; CWE-829.
 
-#### nit: six workflows keep the default `persist-credentials: true` while `npm ci` runs install scripts
+##### nit: six workflows keep the default `persist-credentials: true` while `npm ci` runs install scripts
 
 - Location: `.github/workflows/end_to_end_tests.yml`, `end_to_end_tests_production.yml`, `format_check.yml`,
   `integration_tests.yml`, `lint.yml`, `unit_tests.yml`, the step `actions/checkout@v7` of each
@@ -2302,7 +2313,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   same setting, and the runs of the six workflows show that it works.
 - Reference: CWE-522.
 
-#### nit: the licence is missing in `package.json`, and the licence sentence of the README is not MIT's
+##### nit: the licence is missing in `package.json`, and the licence sentence of the README is not MIT's
 
 - Location: `package.json`; `README.md`, section "Licensing"
 - Severity: Nit
@@ -2313,7 +2324,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Confidence: High. One fix with no effect on the code, and `npm run check` shows that both files stay valid.
 - Reference: BSI TR-03185-2 LE.01, LE.02.
 
-#### nit: no guide for contributions
+##### nit: no guide for contributions
 
 - Location: the repository (no CONTRIBUTING.md); `README.md`
 - Severity: Nit
@@ -2323,7 +2334,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - Confidence: Low. Whether outside contributions are accepted is a decision of the maintainer.
 - Reference: BSI TR-03185-2 GV.01.
 
-#### nit: ESLint 9 is marked as no longer supported, and the hold-back is not written down
+##### nit: ESLint 9 is marked as no longer supported, and the hold-back is not written down
 
 - Location: `package.json`, `eslint`; the entry `node_modules/eslint` in `package-lock.json`
 - Severity: Nit. It is a development tool.
@@ -2336,7 +2347,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   fix is one note in `tech.md`, and `npm run docs:check` covers it.
 - Reference: CWE-1104.
 
-#### question: does Dependabot find the files named `Containerfile`?
+##### question: does Dependabot find the files named `Containerfile`?
 
 - Location: `.github/dependabot.yml`, the two `docker` entries
 - Severity: Nit
@@ -2346,7 +2357,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   though three specs say it is.
 - Suggestion (optional): check in the dependency graph of the repository that both files are listed.
 
-#### question: does the image carry the licence notices of the third-party code, including the LGPL `libvips` of `sharp`?
+##### question: does the image carry the licence notices of the third-party code, including the LGPL `libvips` of `sharp`?
 
 - Location: `Containerfile`, the stage `app`, the `COPY` of `.next/standalone`
 - Severity: Nit
@@ -2358,7 +2369,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   file of third-party notices from the SBOM.
 - Reference: BSI TR-03185-2 LE.02.
 
-#### Reviewed
+##### Reviewed
 
 - Files read: the seven workflows, `.github/dependabot.yml`, `package.json`, `.npmrc`, `.nvmrc`, `LICENSE`,
   `README.md`, `Containerfile`, `scripts/Containerfile`, `scripts/image.sh`, `.containerignore`, the CI and image
@@ -2386,9 +2397,9 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
 - The IDs of BSI TR-03185-2 are taken from the plan of this review; their exact wording could not be checked (see
   "Open questions").
 
-### Cross-cutting: data model, architecture, documentation and tests
+#### Cross-cutting: data model, architecture, documentation and tests
 
-#### issue: no inventory of the cryptography, and no documented way to replace the cookie secret
+##### issue: no inventory of the cryptography, and no documented way to replace the cookie secret
 
 - Location: `spec/users-and-login.md`, sections "Passwords" and "Sessions"; `spec/connected-apps.md`; `spec/oauth.md`,
   section "Secrets"; `src/lib/auth.ts`, `readSecret()` and `getAuth()`
@@ -2409,7 +2420,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   tried.
 - Reference: OWASP A04:2025 Cryptographic Failures; ASVS 11.1.1, 11.1.2, 11.2.2; CWE-320; BSI TR-02102-1.
 
-#### issue: no security overview places the security mechanisms, the outgoing connections and the sensitive data, and no spec mentions CSRF
+##### issue: no security overview places the security mechanisms, the outgoing connections and the sensitive data, and no spec mentions CSRF
 
 - Location: `spec/architecture.md`; `spec/container-image.md`, section "What the environment has to provide"
 - Severity: Minor
@@ -2422,7 +2433,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   ("outgoing connections only to DNS and `443/tcp`"), and none classifies the sensitive data. `roadmap.md` ("Things to Check") lists "`Host`
   passed unchanged" for the reverse proxy, but that the CSRF check depends on it stands only in this report.
 - Impact: someone who changes the deployment or adds a route cannot see which control they rely on.
-- Evidence: `grep -i "csrf\|cross-site" spec/*.md` finds only `review-report.md`.
+- Evidence: `grep -i "csrf\|cross-site" spec/*.md` finds only `review-report-v2.md`.
 - Suggestion (required): a section "Security overview" in `architecture.md` with one line per mechanism, the outgoing
   connections, and the classes of data with their protection and retention; in `container-image.md`, that the proxy
   passes `Host` unchanged and that DNS and port 443 are needed when OAuth is on. The threat model of this report can
@@ -2431,7 +2442,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   sessions), and which content goes into the overview is a choice.
 - Reference: OWASP A06:2025 Insecure Design; `CON.10.A11`; ASVS 13.1.1, 13.2.4, 14.1.1, 14.1.2; CWE-1059.
 
-#### issue: no spec lists the costly functions and how each is protected
+##### issue: no spec lists the costly functions and how each is protected
 
 - Location: `spec/pages.md`, section "The cost of the Markdown parse"; `spec/users-and-login.md`, section
   "Passwords"; `spec/oauth.md`, section "Clients"; `spec/mcp.md`, section "The endpoint"
@@ -2451,7 +2462,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   are fixed, and those are still open.
 - Reference: OWASP A06:2025 Insecure Design; ASVS 15.1.3, 15.2.2; CWE-400.
 
-#### issue: the protections that come from Next.js, the MCP SDK and Better Auth have no regression test
+##### issue: the protections that come from Next.js, the MCP SDK and Better Auth have no regression test
 
 - Location: `e2e/security-headers.spec.ts`, `e2e/access.spec.ts`, `src/features/mcp/http.test.ts`
 - Severity: Minor
@@ -2469,7 +2480,7 @@ catch (e) { ctx.context.logger.error("Failed to delete session from database", e
   the code but not tried in a test.
 - Reference: OWASP A01:2025 Broken Access Control; ASVS 3.5.1, 3.4.2, 14.3.2; CWE-352; `CON.10.A15`.
 
-#### issue: Better Auth takes `BETTER_AUTH_SECRETS` from the environment, which replaces the cookie secret of `AuthSecret`
+##### issue: Better Auth takes `BETTER_AUTH_SECRETS` from the environment, which replaces the cookie secret of `AuthSecret`
 
 - Location: `src/lib/auth.ts`, `createAuth()`; `spec/users-and-login.md`, section "Sessions"
 - Severity: Minor. It needs an operator who sets the variable; the session token is still looked up in the database.
@@ -2488,7 +2499,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   secrets that Better Auth builds, so it was not tried that existing cookies stay valid.
 - Reference: OWASP A02:2025 Security Misconfiguration; ASVS 11.1.1; CWE-15.
 
-#### nit: the generated first password has about 116.7 bits, below 128 (ASVS) and 120 (TR-02102-1)
+##### nit: the generated first password has about 116.7 bits, below 128 (ASVS) and 120 (TR-02102-1)
 
 - Location: `src/features/users/password.ts`, `FIRST_PASSWORD_LENGTH` and `FIRST_PASSWORD_ALPHABET`
 - Severity: Nit. It is guessed online behind the login wait and must be changed at the first login.
@@ -2501,7 +2512,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   rule of `users-and-login.md`.
 - Reference: ASVS 11.5.1; BSI TR-02102-1.
 
-#### nit: the database does not hold every invariant that the comments of the schema state
+##### nit: the database does not hold every invariant that the comments of the schema state
 
 - Location: `prisma/schema.prisma`, model `Account`
 - Severity: Nit. Only a broken caller can break it.
@@ -2512,7 +2523,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   was not checked whether the adapter of Better Auth minds a unique key there.
 - Reference: CWE-20.
 
-#### nit: no index serves the lists of all pages and of the deleted pages of a folder
+##### nit: no index serves the lists of all pages and of the deleted pages of a folder
 
 - Location: `src/features/pages/service.ts`, `listAllFolderPages()` and `listDeletedPages()`; `prisma/schema.prisma`,
   model `Page`
@@ -2524,7 +2535,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 - Confidence: Medium. The index needs a migration that is not named, and no test or plan shows that PostgreSQL would
   use it.
 
-#### nit: `architecture.md` describes ids that do not exist
+##### nit: `architecture.md` describes ids that do not exist
 
 - Location: `spec/architecture.md`, section "Database"
 - Severity: Nit
@@ -2539,7 +2550,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 - Confidence: High. One sentence and one comment, no change of behaviour, and a search for `randomUUID` shows that
   `newUserData()` and `exchangeCode()` are the only places that set an id.
 
-#### nit: the longest functions of the services mix several steps, and small helpers are repeated
+##### nit: the longest functions of the services mix several steps, and small helpers are repeated
 
 - Location: `src/features/oauth/token-service.ts`, `exchangeCode()` (124 lines) and `refreshGrant()` (89 lines);
   `src/features/auth/service.ts`, `reserveAttempt()` (82 lines); six identical `parse*Id()` wrappers of `z.guid()` in
@@ -2556,7 +2567,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   judgement of readability.
 - Reference: CWE-561.
 
-#### suggestion: CI does not check that the migrations produce the schema
+##### suggestion: CI does not check that the migrations produce the schema
 
 - Location: `.github/workflows/integration_tests.yml`; `e2e/support/database.ts`, `migrateTestDatabase()`;
   `integration/global-setup.ts`, `globalSetup()`
@@ -2570,7 +2581,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 - Confidence: Medium. The exact options of `prisma migrate diff` against the test database were not tried, and
   `migrateTestDatabase()` also runs before the end-to-end tests.
 
-#### suggestion: expired sessions and old login counts stay in the database
+##### suggestion: expired sessions and old login counts stay in the database
 
 - Location: `prisma/schema.prisma`, models `Session`, `LoginAttempt` and `LoginWindow`; the cleanup in
   `src/features/auth/service.ts`, `deleteOldCounts()`, called from `logIn()`
@@ -2584,7 +2595,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   only at a later login may not be enough, and the retention to state is still a choice.
 - Reference: ASVS 14.2.7 (Level 3); CWE-359.
 
-#### suggestion: no lint rule keeps comparisons strict
+##### suggestion: no lint rule keeps comparisons strict
 
 - Location: `eslint.config.mjs`
 - Severity: Nit
@@ -2598,7 +2609,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   option allows, and `npm run lint` shows it.
 - Reference: ASVS 15.3.5.
 
-#### Reviewed
+##### Reviewed
 
 - Files read: `prisma/schema.prisma` and its migrations, `eslint.config.mjs`, `tsconfig.json`, `src/lib/`, the
   secrets, services and queries of every feature, `src/features/services.test.ts`, the titles of every test in
@@ -2640,7 +2651,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   encrypts nothing itself and creates no key pairs, so ASVS 11.3, 11.4.4 and 11.6.1 do not apply; ASVS 11.2.3 (128
   bits) is met except for the first password (nit above).
 
-## Accepted deviations
+### Accepted deviations
 
 - NIST SP 800-63B-4 3.2.2, disabling an account after 100 failures in a row (Login): `users-and-login.md`,
   "Decisions": "An account is never disabled after many failures … with no mail and no password reset there would be
@@ -2686,7 +2697,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 - Expired grants are not deleted by themselves (Cross-cutting, ASVS 14.2.7, Level 3): `connected-apps.md`,
   "Current limits".
 
-## What is good
+### What is good
 
 - Access control: two layers of the login check, with the check that protects the data in `requireUser()`
   (`src/features/auth/session.ts`), and an answer of the proxy that the client of Next.js understands for an action
@@ -2779,7 +2790,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 - Cross-cutting: hand-written migrations explain themselves, and `integration/db-errors.test.ts` pins the index names the services
   rely on.
 
-## Checks on the deployment
+### Checks on the deployment
 
 - The reverse proxy passes a `Host` and an `X-Forwarded-Host` that a client cannot choose: the origin check of
   Server Actions compares the `Origin` with them, and `serverActions.allowedOrigins` is not set (Access control).
@@ -2838,7 +2849,7 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
 - `NODE_OPTIONS` has no `--inspect`, and `HIPPOWIKI_LOG_CLIENT_ADDRESS` is `false` outside a deliberate check
   (Configuration).
 - In the settings of the repository: who may push to the image package (Supply chain). The other settings were read
-  on 2026-11-22; what they lack is in the findings of "Supply chain" and in `manual-check-report.md`.
+  on 2026-11-22; what they lack is in the findings of "Supply chain" and in the part "Manual checks of the app and of the repository".
 - The deployment pulls the image by digest, not by tag (Supply chain).
 - No vulnerability scanner is installed on the review machine, so the image was not scanned; a scan of the published
   image (for example with Trivy or Grype) is left to the deployment (Supply chain).
@@ -2846,14 +2857,14 @@ parseSecretsEnv(env.BETTER_AUTH_SECRETS);` … `secret = secretsArray[0].value;`
   `BETTER_AUTH_SECRETS`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` and `BETTER_AUTH_TRUSTED_ORIGINS` are not set in the
   container (Cross-cutting).
 
-## Standards coverage
+### Standards coverage
 
 Every requirement of the named standards that applies to HippoWiki has a result in this report: a finding, an entry
 under "Reviewed" of an area, an entry in "Accepted deviations", or an entry in "Checks on the deployment". The
 requirements that the area steps did not name were checked in the standards cross-check and added to the "Reviewed"
 list of their area, marked "Standards cross-check".
 
-### OWASP ASVS 5.0.0, Levels 1 and 2
+#### OWASP ASVS 5.0.0, Levels 1 and 2
 
 | Chapter                                 | Covered in                                                                          | Not applicable, with the reason                                                                                                                                                           |
 | --------------------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -2878,7 +2889,7 @@ list of their area, marked "Standards cross-check".
 Level 3 requirements are named only where they were cheap to meet: 3.4.7, 3.4.8, 4.1.4, 6.3.7, 6.3.8, 10.4.12, 13.4.7,
 14.2.7, 15.4.2 and 16.5.4.
 
-### BSI IT-Grundschutz: CON.10 and APP.3.1
+#### BSI IT-Grundschutz: CON.10 and APP.3.1
 
 The requirements are those of the module texts on bsi.bund.de as fetched on 2026-11-14. Requirements marked
 "ENTFALLEN" there are left out.
@@ -2915,7 +2926,7 @@ The requirements are those of the module texts on bsi.bund.de as fetched on 2026
 | `APP.3.1.A22` penetration test and revision                       | this review; a penetration test of the deployment is a deployment check              |
 | `APP.3.1.A20` web application firewall (high)                     | a deployment decision; not required by the target level                              |
 
-### BSI IT-Grundschutz: SYS.1.6 and OPS.1.1.5, as far as they concern the code or the repository
+#### BSI IT-Grundschutz: SYS.1.6 and OPS.1.1.5, as far as they concern the code or the repository
 
 - `SYS.1.6.A6` secure images, `SYS.1.6.A12` distribution of secure images, `SYS.1.6.A14` updating images:
   Configuration and Supply chain (findings on the digest, signing and releases).
@@ -2934,7 +2945,7 @@ The requirements are those of the module texts on bsi.bund.de as fetched on 2026
   encryption and availability of logs) are operational; they are covered by the deployment checks on log collection,
   access and retention.
 
-### OWASP Top 10:2025
+#### OWASP Top 10:2025
 
 | Category                                   | Covered in                                                                       |
 | ------------------------------------------ | -------------------------------------------------------------------------------- |
@@ -2955,7 +2966,7 @@ Access control and Connected apps, authentication (API2) in Connected apps and O
 OAuth, business flows (API6) in Login and OAuth, SSRF (API7) in OAuth, misconfiguration (API8) in Configuration,
 inventory (API9) in Cross-cutting, and unsafe use of other APIs (API10) in OAuth (metadata documents).
 
-### CWE Top 25 2025
+#### CWE Top 25 2025
 
 - Covered: CWE-79 (Content), CWE-89 (Cross-cutting), CWE-352 (Browser security), CWE-862, CWE-863, CWE-284 and CWE-639
   (Access control, Connected apps), CWE-22 (Content: names are `[a-z0-9-]` only, no file paths from input), CWE-78 and
@@ -2965,14 +2976,14 @@ inventory (API9) in Cross-cutting, and unsafe use of other APIs (API10) in OAuth
 - Not applicable: CWE-787, CWE-416, CWE-125, CWE-120, CWE-476, CWE-121 and CWE-122 (memory safety; the app runs in a
   managed runtime), CWE-434 (no uploads).
 
-### OWASP MCP Top 10 (2025)
+#### OWASP MCP Top 10 (2025)
 
 MCP01 Token Mismanagement and Secret Exposure, MCP02 Privilege Escalation via Scope Creep, MCP03 Tool Poisoning,
 MCP05 Command Injection and Execution, MCP06 Prompt Injection via Contextual Payloads, MCP07 Insufficient
 Authentication and Authorization, MCP08 Lack of Audit and Telemetry and MCP10 Context Injection and Over-Sharing are
 reviewed in "MCP server" and "Connected apps"; MCP04 Software Supply Chain Attacks is covered by "Supply chain"; MCP09 Shadow MCP Servers does not apply to the code (one server, behind the token check).
 
-### Other standards
+#### Other standards
 
 - NIST SP 800-63B-4: Login (length, blocklist, normalisation, failures, sessions, lifetime, cookies).
 - OAuth (RFC 9700, OAuth 2.1, RFC 7636, RFC 8414, RFC 9728, RFC 7591, RFC 8707, RFC 9207, the client ID metadata
@@ -2983,8 +2994,1142 @@ reviewed in "MCP server" and "Connected apps"; MCP04 Software Supply Chain Attac
 - BSI TR-02102-1: Login (Argon2id) and Cross-cutting (inventory); TR-02102-2: "Checks on the deployment"; TR-03183-2
   and TR-03185-2: Supply chain.
 
-## Open questions
+### Open questions
 
 - The exact wording of BSI TR-03185-2 could not be checked during the review; the requirement IDs (VM.01, LE.01,
   LE.02, GV.01, BR.01–BR.04, QA.01, QA.06) are those of the plan of the review. Check them against the document before
   a fix plan relies on them.
+
+## Review of the code around the Markdown parser
+
+### Summary
+
+- Verdict: one Major and no Blocker.
+  - The Major: the footnote reference rule of markdown-it-footnote, which `markdown.ts` keeps, takes quadratic time as
+    soon as the page defines a footnote. One parse of 100,000 characters then takes about 7 s, and every save or view
+    of the page parses it two to four times.
+  - The replaced footnote tail rule is correct and linear for every input without nested definitions. Nested
+    definitions leak unbalanced tokens, which also defeats the depth limit.
+- Findings: 9 in all, 0 Blocker, 1 Major, 4 Minor and 4 Nit (4 `issue:`, 1 `suggestion:`, 4 `nit:`). Of the 9
+  Suggestions, 3 are High, 3 Medium and 3 Low.
+- To fix first: the footnote reference rule and its input of the cost test.
+- Not covered by this review: see "Not covered" at the end of this part.
+
+### Scope and method
+
+- The review answers three questions: how closely the consumers depend on the tokens of markdown-it, the footnote rule
+  that replaces the one of markdown-it-footnote, and the parses that are repeated for the same content.
+- Reviewed: `src/features/pages/markdown.ts` and its consumers:
+  - `components/markdownToReact.tsx`, `components/MarkdownContent.tsx`, `derive.ts`, `wiki-links.ts`, `schema.ts`,
+    `forms.ts`, `links-service.ts` and the parse paths of `service.ts`
+  - `src/features/search/text.ts` and `index-data.ts`
+  - the editor modules `link-address.ts`, `safe-address.ts`, `live-preview.ts` and `wiki-links.ts`
+  - `src/test/slow-markdown.ts` and the cost tests
+- Compared with `node_modules/markdown-it-footnote/index.mjs` 4.0.0 and markdown-it 15.0.3. Specs read: `pages.md`,
+  `wiki-links.md`, `search.md`, `markdown-editor.md`, `architecture.md`, `testing.md`, and the related sections of the parts
+  "Security and code review" and "Review of the list layout in the page view" of this file.
+- Date: 2026-11-22. The code is the state of the branch `main` after the commit
+  `add the ci times of the faster end-to-end tests`.
+- Rechecked: 2026-11-23, the state of `main` after the commit `wrap up the order of the wiki link rewrite`. Every
+  finding is still open:
+  - The Major again: 419 against 1,576 ms for 12,500 and 25,000 `[^` with a definition (26 and 42 ms without one).
+  - The quote and depth examples of the nested definitions, the parse of an unused definition and the image with a
+    footnote reference give the tokens and values the findings cite.
+  - The parse paths, the cited passages of the specs and the untyped footnote metas are unchanged.
+  - A rename leaves the link of an unused definition and of the earlier of two definitions with the same label as it
+    was, which `wiki-links.md` now contradicts (the issue on footnote definitions that are not shown).
+- Evidence comes from scratch scripts, not kept, that ran the functions of the repository with `npx tsx`: differences
+  against the plugin over random inputs, the balance of the token stream, the depth limit, the rewrite of wiki links,
+  and timings.
+  - Timings are the best of 3 to 7 runs on an Apple M4 Pro with Node 26.13.
+  - The unit tests of `markdown.test.ts`, `wiki-links.test.ts`, `text.test.ts`, `derive.test.ts` and
+    `link-address.test.ts` pass (130 tests).
+  - The quadratic time of the Major was reproduced a second time, on its own: 435 ms against 1,549 ms for 12,500 and
+    25,000 `[^` with a definition (24 and 46 ms without one).
+
+### Findings
+
+#### issue: footnote references take quadratic time as soon as the content defines a footnote, so one page can block the server for seconds per view
+
+- Location:
+  - `node_modules/markdown-it-footnote/index.mjs`, `footnote_ref()`, used unchanged by `src/features/pages/markdown.ts`.
+  - `src/test/slow-markdown.ts`, the input `"[^a]"`.
+  - `spec/pages.md`, "The cost of the Markdown parse" ("The parse is linear in the length of the content"), and
+    "Decisions", the items on the cost of the parse ("parses in time linear", "With a linear parse", "the parse is
+    linear on every input measured").
+  - The part "Security and code review", the Reviewed item "The cost of the Markdown parse" ("parses in linear time").
+  - `spec/roadmap.md`, "Rights", the item "Public content" ("The Markdown parse is linear").
+- Severity: Major. Any Writer, in the browser or through MCP, can make every view of a page block the event loop of
+  Node.js for many seconds. No data is lost.
+- Category: security, performance
+- Problem:
+  - Once `env.footnotes.refs` exists (any definition `[^x]: …`), `footnote_ref()` scans from every `[^` to the next
+    space, line break or `]`.
+  - A line of `[^` without such a stop makes every scan run to the end of the line, which is quadratic. The replaced
+    `footnote_tail` is not involved.
+  - The cost input `"[^a]"` defines no footnote, so the rule returns at its first check and the quadratic path is
+    never measured.
+- Impact:
+  - About 7 s per parse at the content limit.
+  - A save in the browser parses 4 times (about 28 s), a save through MCP 3 times. A view, a revision view, a view of
+    a deleted page and the delete dialog parse 2 times (about 14 s).
+  - A rename parses such a linking page 4 times inside the exclusive lock of the links, whose transaction ends after
+    60 s.
+  - The event loop is blocked for all users meanwhile.
+  - A bump of `SEARCH_INDEX_VERSION` or `LINK_INDEX_VERSION` derives such a page again at the start.
+  - The author's own browser freezes in `titleFromContent()` when "Save" opens the dialog.
+- Evidence:
+  - `"[^".repeat(n) + "\n\n[^a]: x\n"`: n = 12,500 takes 465 ms, n = 25,000 takes 1,789 ms, n = 50,000 (100,010
+    characters) takes 7,124 ms. Each doubling costs 4 times as much.
+  - The same without the definition takes 95 ms. markdown-it with the plugin alone takes the same 7,116 ms.
+  - `"[^a".repeat(33_330)` with a definition takes 4,224 ms.
+  - Rendering adds the same again (6,346 ms).
+- Suggestion (required):
+  - Bound the scan with the technique already used for wiki links: wrap the rule of the plugin and refuse a reference
+    when the next `[` comes before the next `]`, with `nextMark()` of `markdown.ts`:
+    ```ts
+    const footnoteRefRule = markdown.inline.ruler.__rules__.find(({ name }) => name === "footnote_ref")!;
+    function footnoteRef(state: StateInline, silent: boolean): boolean {
+      const src = state.src;
+      if (src.charCodeAt(state.pos) !== 0x5b || src.charCodeAt(state.pos + 1) !== 0x5e) return false;
+      const close = nextMark(state, "]", state.pos + 2);
+      if (close === -1) return false;
+      const open = nextMark(state, "[", state.pos + 2);
+      if (open !== -1 && open < close) return false;
+      return footnoteRefRule.fn(state, silent);
+    }
+    markdown.inline.ruler.at("footnote_ref", footnoteRef);
+    ```
+  - Every scan then ends before the next `[`. The three inputs above then take 102, 89 and 103 ms instead of 6,811,
+    4,588 and 7,241 ms.
+  - Across 100,000 random inputs it renders the same HTML as the plugin, except for labels that contain `[`, such as
+    `[^[^b]`, which no longer resolve.
+  - Add two inputs to `SLOW_INPUTS`:
+    - `"[^ with a definition"`: `` `${repeated("[^")}`.slice(0, CONTENT_MAX_LENGTH - 10) + "\n\n[^a]: x" ``.
+    - `"[^a] with a definition"`: about 25,000 references to one footnote. Its page view renders 50,000 links and
+      took 926 ms, half the budget, and is not measured today.
+  - Correct "linear" in `pages.md`, the part "Security and code review" and `roadmap.md` once it is fixed.
+- Confidence: Medium. Measured and compared with the plugin. Still open: labels with `[` no longer resolve, which
+  GitHub probably does not allow either but which was not checked there, and the fix relies on the private
+  `__rules__`, as `tableRule` already does.
+- Alternatives: a footnote reference rule of its own (a copy of the plugin's, about 40 lines, with the bounded scan),
+  without the private API but with more code to keep in step with the plugin.
+- Reference: CWE-407 (Inefficient Algorithmic Complexity); ASVS 15.2.2.
+
+#### issue: nested footnote definitions leak closing tokens into the content, which breaks the page view and the depth limit
+
+- Location:
+  - `src/features/pages/markdown.ts`, `footnoteTail()` and `analyseMarkdown()`.
+  - The comment of `footnoteTail()` ("It makes the same tokens").
+  - `spec/pages.md`, "Decisions" ("makes the same tokens in one pass").
+- Severity: Minor. Only content that indents a footnote definition inside another one is affected, and `maxNesting`
+  still bounds the nesting.
+- Category: correctness
+- Problem:
+  - markdown-it-footnote allows a definition inside a definition, for example `[^a]: x\n    - [^b]: y`.
+  - On the inner `footnote_reference_close`, `footnoteTail()` sets `definition = null`. So the rest of the outer
+    definition, such as `list_item_close` and `bullet_list_close`, goes to the main tokens, while its opening tokens
+    stay in the definition or are dropped with it.
+  - The plugin leaks the same way. The two also differ in what the outer definition keeps, so "the same tokens" holds
+    only without nesting.
+- Impact:
+  - In a quote, `> [^a]: x\n>     - [^b]: y\n>\n> after` gives
+    `blockquote_open list_item_close bullet_list_close paragraph_open …`. The page view closes the quote early and
+    shows "after" outside it.
+  - `analyseMarkdown()` counts each stray `bullet_list_close` as one level less, so content with lists nested 25 deep
+    passes the limit of 20.
+- Evidence:
+  - `# T\n\n` and a list nested 25 deep is refused with "Lists and quotes must be nested at most 20 levels deep". With
+    `"[^a]: def a\n    - [^b]: def b\n\n".repeat(10)` before it, `analyseMarkdown().depth` is 15 and
+    `pageContentInputSchema` accepts it.
+  - Across 200,000 random inputs, `footnoteTail()` and the tail of the plugin differ in 1,821, and every one of them
+    has a nested definition.
+  - 419 of 100,000 random inputs give an unbalanced token stream.
+- Suggestion (required):
+  - Keep a stack in `footnoteTail()`. On `footnote_reference_open`, push the current `definition` before starting a
+    new one. On `footnote_reference_close`, restore it with `definition = outer.pop() ?? null`.
+  - This leaves 0 of the 100,000 inputs unbalanced, and the quote example keeps "after" inside the quote.
+  - Add a unit test: nested definitions give a balanced token stream, and the depth example above is refused.
+  - Reword the comment and `pages.md` to "the same tokens, except that a nested definition no longer leaks the end of
+    the outer one".
+- Confidence: Medium. The balance was checked on random inputs. The output for nested definitions changes from the
+  plugin's, and what GitHub does with them was not checked.
+- Alternatives: refuse nested definitions by wrapping `footnote_def` so that it returns `false` while
+  `state.parentType === "footnote"`. Simpler, but a definition indented in another then shows as text of the outer
+  one.
+
+#### suggestion: the same content is parsed up to four times per save and per linking page of a rename
+
+- Location:
+  - The save in the browser: `src/features/pages/forms.ts` `parsePageContentFormData()`, then `service.ts`
+    `updatePageContent()`, then `storeContentChange()` → `searchIndexData()` → `pageText()`, then `storeLinks()` →
+    `linkRowsOf()` → `wikiLinksOf()`.
+  - `createPage()`: `newPageInput()`, `searchIndexData()`, `linkRowsOf()`.
+  - The rename: `links-service.ts`, with `rewriteWikiLinks()`, `titleFromContent()`, `pageText()` and `storeLinks()`.
+  - The page view: `PageView.tsx`, `resolveWikiLinks()` → `wikiLinksOf()` and `markdownToReact()`.
+- Severity: Minor. A few tens of milliseconds for realistic content at the limit; it matters mainly inside the
+  exclusive lock of the links during a rename.
+- Category: performance
+- Problem: each consumer calls `parseMarkdown()` itself, so one content is parsed this many times:
+
+  | Path                          | Parses                                  |
+  | ----------------------------- | --------------------------------------- |
+  | Save in the browser           | 4                                       |
+  | Save through MCP              | 3                                       |
+  | New page in the browser       | 4                                       |
+  | Page view                     | 2                                       |
+  | Each linking page of a rename | 4 (the last 3 on the rewritten content) |
+  | Opening the editor            | 0 (only Lezer runs)                     |
+  | Search indexing               | 1 per write                             |
+
+  `pages.md` gives a reason only for the double validation.
+
+- Impact:
+  - Realistic content of 100,000 characters (headings, links, lists, tables, code) parses in 12 ms. A save in the
+    browser costs 50 ms, about 37 ms of them repeats, and a linking page of a rename 51 ms.
+  - With the slowest input that is still linear (`"!["`, 160–185 ms per parse), a save costs 690 ms and a linking
+    page of a rename 691 ms. About 87 such pages at the limit would pass the 60 s timeout of `LINKS_TRANSACTION`, and
+    the rename would fail.
+  - Until the footnote finding above is fixed, a single such page needs only 28 s.
+- Evidence: the call sites listed under Location, and the timings above.
+- Suggestion (optional):
+  - Let the derivations take tokens: `pageText(content, tokens)` and `wikiLinksOf(content, tokens)`, with the existing
+    signatures parsing for themselves.
+  - Parse once per stored content in `storeContentChange()`, `createPage()` and `updateLinkingPages()`. That gives 2
+    parses per save and 2 per linking page instead of 4, and keeps the double validation that `pages.md` decided on.
+  - Cover the rename with a linking page at the content limit in `integration/wiki-link-update.cost.test.ts`, whose
+    pages today hold about 2,000 characters.
+- Confidence: Low. It changes the interfaces of `text.ts` and `wiki-links.ts` across the pages and search features,
+  and the gain was measured for the pure functions only, not end to end.
+- Alternatives: share the tokens of the page view between `resolveWikiLinks()` and `markdownToReact()` (one parse less
+  per view, about 12 ms); or a small memo of the last tokens per content (simple, but it holds the tokens of up to
+  100,000 characters per entry).
+
+#### issue: `pages.md` understates how often the content is parsed and how long a parse can take
+
+- Location: `spec/pages.md`, "The cost of the Markdown parse" (the paragraph before the list, and the item "The length
+  of the content is checked before any parse …"); the part "Security and code review", the Reviewed item "A save in the browser
+  parses the content twice".
+- Severity: Minor
+- Category: docs
+- Problem:
+  - `pages.md` says that the parse "runs on the server at every save (twice in the browser …)" and that "the content
+    of a new page is parsed once on the server". On the server, a save parses 3 times (4 in the browser), a new page 3
+    times (4 in the browser), and a view 2 times.
+  - The part "Security and code review" says that a parse "takes at most about 0.1 s at the content limit". `"!["` takes 160–185 ms,
+    and footnote references 7 s until they are fixed.
+- Impact: whoever weighs a limit or a change of the parse reads a cost of a half to a quarter of the real one.
+- Evidence: the call sites and timings of the suggestion above.
+- Suggestion (required):
+  - Describe the parses without counts that drift: "at every save, once for each validation and once each for the
+    search text and the index of links".
+  - Replace "0.1 s" by a pointer to the budget of `markdown.cost.test.ts`.
+- Confidence: Medium. The wording depends on whether the suggestion above is taken.
+
+#### issue: the wiki links of footnote definitions that are not shown are not changed on a rename, although `wiki-links.md` says every link is
+
+- Location:
+  - `src/features/pages/markdown.ts`, `footnoteTail()`.
+  - `src/features/pages/wiki-links.ts`, `wikiLinksOf()` and `rewriteWikiLinks()`.
+  - `spec/wiki-links.md`, "Updates on a move or rename" ("every wiki link to it in the pages of the folder … is
+    changed", "inside a footnote definition included").
+- Severity: Minor
+- Category: correctness
+- Problem:
+  - A definition that no reference uses, and the earlier of two definitions with the same label, leave no tokens.
+    Their wiki links are not counted, indexed, shown as backlinks or rewritten on a rename.
+  - `wiki-links.md` says that every wiki link to the page is changed, inside a footnote definition included, and does
+    not except these definitions.
+- Impact: once the footnote is referenced later, or the later definition is removed, the link points to the old name
+  and shows as missing. The "Move or rename page" dialog does not count a page whose only link to the page stands
+  there.
+- Evidence:
+  - `"# T\n\n[^a]: unused [[x]]\n"` parses to `heading_open inline heading_close` only.
+  - A rename of `x` to `y` with `rewriteWikiLinks()` leaves `"# T\n\n[^a]: unused [[x]]\n"` unchanged, and changes
+    only the second link of `"# T\n\nText[^a]\n\n[^a]: first [[x]]\n\n[^a]: second [[x]]\n"`.
+- Suggestion (required): collect the wiki links of every definition before `footnoteTail()` drops its tokens, for
+  example in a list of the environment of the parse that `wikiLinksOf()` reads as well, so that the rewrite, the index
+  of links and the count of the limit see them. Add a unit test of `rewriteWikiLinks()` with the two inputs above.
+- Confidence: Low. It needs a decision between changing the code and narrowing the spec, and it changes what the index
+  of links and the limit of wiki links count.
+- Alternatives: narrow "Updates on a move or rename" in `wiki-links.md` to the links that the page view shows, and
+  name the unused and the overridden definitions as a current limit. No code change, but the links in them break on a
+  rename.
+
+#### nit: `pages.md` names `markdown.ts` for `SAFE_PROTOCOLS` and for the prefix of the footnote ids
+
+- Location: `spec/pages.md`, "Rendering", the items on safe addresses and on footnotes.
+- Severity: Nit
+- Category: docs
+- Problem:
+  - `pages.md` says "(`SAFE_PROTOCOLS` in `markdown.ts`)", but the set is in `src/features/pages/safe-address.ts`.
+  - It says "their ids carry a prefix of their own (`markdown.ts`)", but the prefix is `ID_PREFIX` in
+    `src/features/pages/components/markdownToReact.tsx`.
+  - `npm run docs:check` checks only that the files exist, not where a symbol lives.
+- Impact: a reader looking for the list of protocols or for the prefix opens the wrong module.
+- Evidence: `grep -rn "SAFE_PROTOCOLS\|ID_PREFIX" src` finds only these two files.
+- Suggestion (required): point to `safe-address.ts` and to `ID_PREFIX` in `components/markdownToReact.tsx`.
+- Confidence: High. Both pointers were checked with grep, and `npm run docs:check` covers the file names.
+
+#### nit: `wiki-links.md` restates the limit of 5,000 wiki links in "Decisions" without a pointer
+
+- Location: `spec/wiki-links.md`, "Decisions" ("A page holds at most 5,000 wiki links, a guard for …").
+- Severity: Nit
+- Category: docs
+- Problem: "The limit" in the same file states the value with its pointer (`CONTENT_MAX_WIKI_LINKS` in
+  `src/features/pages/limits.ts`). The decision repeats the number without one, as does `pages.md`, which points only
+  to the file.
+- Impact: a change of the constant leaves a stale number in the decision.
+- Evidence: `wiki-links.md`, "The limit" against "Decisions".
+- Suggestion (optional): write "A page holds a limited number of wiki links (see "The limit")" in the decision.
+- Confidence: High. A change of the document only, with one target, checked by reading both sections.
+
+#### nit: the meta of the footnote tokens is read through untyped casts, unlike that of tasks, lists and wiki links
+
+- Location: `src/features/pages/components/markdownToReact.tsx`, `footnoteNumber()` and `footnoteReferenceId()`;
+  `src/features/pages/markdown.ts`, `footnoteTail()` (`open.meta` and `anchor.meta`).
+- Severity: Nit
+- Category: readability
+- Problem:
+  - `markdown.ts` exports `TaskMeta`, `ListMeta` and `WikiLinkMeta`. The metas of the footnotes, which it builds
+    itself for `footnote_open` and `footnote_anchor` and which the plugin builds for `footnote_ref`, are read as
+    `(token.meta as { id: number })` and `as { subId?: number }`.
+  - The shape of the plugin's tokens reaches the renderer without a type.
+- Impact: a change of the shape shows only in the render test of footnotes, not in the type check.
+- Evidence: the cited functions.
+- Suggestion (optional): export `type FootnoteMeta = { id: number; subId?: number; label?: string }` from
+  `markdown.ts`, use `satisfies FootnoteMeta` in `footnoteTail()`, and cast to it in the two helpers.
+- Confidence: High. Types only, no change of behaviour. `npm run typecheck` and "renders footnotes at the end with ids
+  of the prefix user-content-" cover it.
+
+#### nit: a footnote reference in the alt text of an image counts as a reference but shows nowhere
+
+- Location: `src/features/pages/components/markdownToReact.tsx`, `leafElement()`, the case `"image"` (`plainText()` of
+  the children); `src/features/pages/markdown.ts`, `plainText()`.
+- Severity: Nit
+- Category: correctness
+- Problem: markdown-it parses the alt text of an image with the inline rules, so `![alt [^a]](/x.png)` creates a
+  `footnote_ref` inside the image and counts it. The alt text becomes plain text without it, but the footnote still
+  gets a back link `↩` to `#user-content-fnref-1`, and no element has that id.
+- Impact: a dead back link, and a footnote listed without a visible reference.
+- Evidence: `"![alt [^a]](/x.png)\n\n[^a]: note"` gives `inline(image(text footnote_ref))` and a `footnote_anchor` in
+  the footnote block.
+- Suggestion (optional): accept it as a current limit in `pages.md`, or skip a `footnote_ref` inside the label of an
+  image in the footnote reference rule of the Major finding.
+- Confidence: Low. It needs a decision on whether this is worth a rule, and the plugin behaves the same way.
+
+### Reviewed
+
+- The replaced footnote tail:
+  - Without nested definitions, `footnoteTail()` makes exactly the tokens of `footnote_tail` of the plugin: type, tag,
+    nesting, level, content, markup, info, meta, map, hidden, block and children were the same for 200,000 random
+    inputs. The inputs mixed references, duplicate and empty definitions, definitions of several paragraphs, lists,
+    quotes, code, tables, headings, and references in links and images.
+  - The last of duplicate labels wins, as in the plugin. The anchors go into the last paragraph, or after a closing
+    list or code block. An empty definition gets its anchor alone.
+  - With inline footnotes off, every entry has a label, which avoids the stale `tokens` variable of the plugin.
+  - Its cost: one pass. "many footnotes" (3,291 footnotes) parses in 44 ms with it and in 235 ms with the tail of the
+    plugin.
+  - Its safety: the ids of footnotes come from their number only, never from the label, and carry `user-content-`.
+    Labels reach the page only as React text. `footnote_def` scans only its own line, and `maxNesting` bounds the
+    nesting.
+- The shape of the tokens: the consumers depend on the token types, `nesting`, `hidden`, `info`,
+  `attrGet("href"|"src"|"title"|"start"|"style")`, `markup === "linkify"` (the prose of search) and the metas. Each
+  dependency either fails loudly or is covered:
+  - `tableRule` throws at load if markdown-it has no table rule.
+  - The parse of `style="text-align:…"` is covered by "renders a table with alignment".
+  - `markup === "linkify"` is covered by "holds a file name in running text but no `www.` address" in `text.test.ts`.
+  - The internals of linkify-it have the named test "links `www.` addresses only at the start of a word".
+  - The positions of wiki links are checked against the source (`src.startsWith`), and the corpus tests cover every
+    kind of block.
+  - The default branches of the renderer show unknown tokens as text and unknown containers as fragments, so an
+    upgrade that adds a token type stays safe, though silently.
+  - The lockfile pins markdown-it 15.0.3 and markdown-it-footnote 4.0.0.
+  - The editor imports no markdown-it. `link-address.ts` is tested against `parseMarkdown()` (`link-address.test.ts`),
+    and `safe-address.ts` is shared.
+  - The order of the tokens, which puts the footnote definitions last, no longer matters for the rewrite of wiki
+    links: `rewriteWikiLinks()` sorts the links by their positions in the source, which unit tests and integration
+    tests of a page, tab and file rename with a footnote definition before another link check.
+  - The remaining gap is the untyped footnote metas (finding above).
+- The parse paths: traced as in the suggestion above. Opening the editor parses nothing with markdown-it on the
+  server, and its list of pages comes from the database.
+- Escaped task markers: already open in the part "Review of the list layout in the page view" ("an escaped task marker `\[ ]` still makes a task
+  item"). More evidence for it:
+  - `- &#91; ] entity` is taken as a task too.
+  - The editor (Lezer with GFM) shows neither as a task, so the editor and the page view disagree.
+  - The cause is the order of the rules: `task_lists` runs after `text_join`, which merges the `text_special` of `\[`
+    and `&#91;` into the text. Registered with `markdown.core.ruler.before("text_join", …)`, the first child of an
+    escaped item is `text_special` and no longer matches, while `- [ ] real` stays one `text` token `"[ ] real"`. This
+    is an alternative to the fix suggested there.
+- Specs that restate values: the protocols in `pages.md` are the security rule itself, and the code points to the
+  spec. The limits in `pages.md` name `limits.ts`. The budget of 2 s in `pages.md` and `testing.md` is a requirement
+  that the cost tests implement. No message of `schema.ts` is restated in a spec.
+
+### Not covered
+
+- The real server under load. The blocking of the event loop of the footnote finding is inferred from measured times
+  of the parse and the render of the pure functions, not observed end to end.
+- What GitHub does with nested footnote definitions, footnote labels that contain `[`, and the task marker `\[ ]`.
+- Timings on the CI runner. All numbers are from an Apple M4 Pro, so the margins of the cost budgets in CI may be
+  smaller.
+- The cost tests (`npm run test:cost`), the end-to-end and the integration tests. Only the unit tests named above ran.
+- The cost of the editor (Lezer) when it opens large pages.
+
+## Manual checks of the app and of the repository
+
+### Summary
+
+- Verdict: no Blocker and no Major. Every rule of the app that a manual check could reach locally holds: the security
+  headers, CSRF, caching, CORS, the client address of a login, the waits of logins at the same time, the tools of MCP
+  per role, and the speed of the editor. The weak points are settings of the GitHub repository and the limit of logins
+  with the right password at the same moment.
+- Findings: 3 in all, 0 Blocker, 0 Major, 3 Minor and 0 Nit (2 `issue:`, 1 `suggestion:`). Of the 3 Suggestions,
+  1 is High, 1 Medium and 1 Low.
+- To fix first: the approval of workflows from fork pull requests, the one High suggestion.
+- The settings of the repository that open findings of the part "Security and code review" could not see are added to those findings
+  as Evidence: private vulnerability reporting, the alerts and security updates of Dependabot, the rules for `main`
+  and release tags, and the pinning of actions.
+- Not covered: see "Not covered" at the end of this part.
+
+### Scope and method
+
+- Checked: the manual checks of `markdown-editor.md`, of "Things to Check" in `roadmap.md` and of "Checks on the
+  deployment" in the part "Security and code review" that need neither the deployment nor a decision of the user, and the protections
+  of the finding "the protections that come from Next.js, the MCP SDK and Better Auth have no regression test" in
+  the part "Security and code review".
+- Date: 2026-11-22. The code is the state of the branch `main` after the commit
+  `add the review of the code around the markdown parser`.
+- The app ran as a production build (`next build`, `next start` on port 3100) against a throwaway database in the
+  container of the development database, migrated and seeded, and dropped afterwards. The server had
+  `HIPPOWIKI_TRUSTED_PROXIES=1` and `HIPPOWIKI_PUBLIC_URL=http://localhost:3100`.
+- The requests came from scratch scripts, not kept: Playwright for the browser, plain `fetch` for replays of the login
+  Server Action and for MCP, and Prisma for the access tokens of MCP. The results come from the answers and from the
+  log lines of the server.
+- The settings of the repository were read with `gh api` and not changed.
+- All timings are from an Apple M4 Pro with a display of 120 Hz.
+
+### Findings
+
+#### issue: workflows from fork pull requests need an approval only for first-time contributors
+
+- Location: the settings of the repository, Actions → General → "Approval for running fork pull request workflows
+  from contributors"; the part "Security and code review", "Checks on the deployment", the item on the settings of the repository
+- Severity: Minor. A fork pull request gets a read-only token and no secrets, and the release job runs only for a
+  release.
+- Category: security
+- Problem: the setting is `first_time_contributors`. A contributor whose earlier pull request was merged runs the
+  workflows of every later fork pull request without an approval, `npm ci` with its install scripts included.
+  "Checks on the deployment" asks for an approval of workflows from fork pull requests.
+- Impact: an account that once contributed, and is compromised later, runs code on the runners of the repository
+  without anyone looking first.
+- Evidence: `gh api repos/PhilipMay/HippoWiki/actions/permissions/fork-pr-contributor-approval` gives
+  `{"approval_policy":"first_time_contributors"}`.
+- Suggestion (required): set "Require approval for all external contributors"
+  (`approval_policy: all_external_contributors`).
+- Confidence: High. One setting with one value that matches the check, no change to the workflows, and the same `gh
+api` call shows it afterwards.
+- Reference: OWASP A03:2025 Software Supply Chain Failures; CWE-829.
+
+#### issue: secret scanning and push protection are off
+
+- Location: the settings of the repository, "Advanced Security"
+- Severity: Minor. The repository holds no secret of production today: the passwords in the seed and in `.env.example`
+  are values for development.
+- Category: security
+- Problem: `secret_scanning`, `secret_scanning_push_protection`, `secret_scanning_non_provider_patterns` and
+  `secret_scanning_validity_checks` are all `disabled`, although both are free for a public repository.
+- Impact: a token or key committed by mistake, such as a real `.env`, is public at once and nobody is told.
+- Evidence: `gh api repos/PhilipMay/HippoWiki --jq .security_and_analysis`.
+- Suggestion (required): turn on secret scanning and push protection.
+- Confidence: Medium. Whether the seed passwords, the test values of the tests and the format of the secrets of
+  HippoWiki raise alerts that have to be closed by hand was not tried.
+- Reference: OWASP A02:2025 Security Misconfiguration; CWE-798.
+
+#### suggestion: about 50 logins with the right password at the same moment for one name start to fail with the general error
+
+- Location: `src/features/auth/service.ts`, `reserveAttempt()` and `MAX_RESERVE_ROUNDS`; `spec/users-and-login.md`,
+  "Failed logins"; `spec/roadmap.md`, "Things to Check", the item "Logins at the same time on the deployment"
+- Severity: Minor. The spec allows the answer, and no attacker reaches it without the password.
+- Category: performance
+- Problem:
+  - Each successful login deletes the counts of its name and group, so the other logins of the same moment see changed
+    counts and count again. After 50 rounds a login gives up with the general error "The login failed".
+  - Up to 40 logins at once all succeed. From about 50 at once, some fail, and more the more there are.
+  - `users-and-login.md` says that such a login "is answered with the general error", but not from how many logins on.
+- Impact: only a script or very many browsers of the same user log in so many times at the same moment. The user sees
+  "The login failed. Please try again." and the next try works.
+- Evidence: logins replayed with `fetch` at the same moment for `alice` from one client address group:
+
+  | Logins at once | Logged in | General error |
+  | -------------- | --------- | ------------- |
+  | 30             | 30        | 0             |
+  | 40             | 40, 40    | 0, 0          |
+  | 50             | 50, 46    | 0, 4          |
+  | 60             | 55, 51    | 5, 9          |
+  | 70             | 61, 58    | 9, 12         |
+  | 80             | 59, 55    | 21, 25        |
+  | 100            | 68        | 32            |
+
+  Each failure logged "the counts of the logins kept changing, the login attempt was not counted". Bursts with the
+  wrong password, and a mix of 50 right and 50 wrong logins for `admin`, gave no general error.
+
+- Suggestion (optional): write the measured limit into "Failed logins" of `users-and-login.md` as what an operator can
+  expect, and keep `MAX_RESERVE_ROUNDS`.
+- Confidence: Low. Whether the limit is enough is a decision, and on the deployment the latency of the database, the
+  pool of 10 connections and Traefik change the numbers, which "Things to Check" still asks to measure there.
+- Alternatives: more rounds, which moves the limit but lets a burst hold more connections for longer; or a short
+  random pause between the rounds, which spreads the logins of the same moment at the cost of a slower answer.
+
+### Reviewed
+
+- Security headers: `/login`, the redirect from `/folders` without a login, `/api/health` and the pages with a
+  session carry the five headers of `next.config.ts` and no `X-Powered-By`.
+- `/_next/image?url=%2Ffolders&w=64&q=75` redirects to `/login` without a session and answers 404 with one.
+- CSRF: the Server Actions of the login and of "New folder" answer 500 when the browser sends them with a foreign
+  `Origin`. Nobody was logged in and no folder was created; with the right `Origin`, "New folder" works.
+- Caching: every page, RSC payload and answer of an action that the browser fetched carries
+  `private, no-cache, no-store, max-age=0, must-revalidate`. Only the 307 redirects from `/` and from `/login` with a
+  session carry no `Cache-Control`; they have no body and are not cached without one.
+- CORS: no answer carried an `Access-Control-*` header, also not to an `OPTIONS` request with a foreign `Origin`.
+- `/api/auth/*`: `session`, `get-session`, `ok`, `sign-in/email`, `sign-up/email` and `list-sessions` answer 404 to
+  `GET` and `POST` with a session, and redirect to `/login` without one, like every other address.
+- The speed of the editor (see "Speed" in `markdown-editor.md`), measured with `EDITOR_PAGE` in a visible Chromium:
+  - The editor was ready 105 to 178 ms after the start of the navigation.
+  - Typing at the top, in the middle and in tables, Enter and Backspace, the arrow keys, Page Down, scrolling with the
+    wheel and four switches of the mode gave no frame over 17 ms and no long task.
+  - The slowest time from an input to the next paint was 40 ms, at a switch of the mode; typing and moving stayed at
+    16 to 32 ms.
+- The client address group of a login, with `HIPPOWIKI_TRUSTED_PROXIES=1`, as `users-and-login.md` describes it:
+
+  | `X-Forwarded-For` and other headers               | Logged `clientAddress`                       |
+  | ------------------------------------------------- | -------------------------------------------- |
+  | `203.0.113.7`                                     | `203.0.113.7`                                |
+  | `1.2.3.4, 203.0.113.8`                            | `203.0.113.8`, the leftmost entry is ignored |
+  | `203.0.113.9` with `X-Real-Ip: 9.9.9.9`           | `203.0.113.9`                                |
+  | `203.0.113.11` with `Forwarded: for=198.51.100.1` | `203.0.113.11`                               |
+  | `2001:db8:1:2:aaaa:bbbb:cccc:1`                   | `2001:db8:1:2::/64`                          |
+  | `::ffff:203.0.113.10`                             | `203.0.113.10`                               |
+  | none, also over `[::1]`                           | `0:0:0:0::/64`, no warning                   |
+  | `not-an-address`                                  | `shared`, and one warning without the value  |
+
+- Logins at the same time with the wrong password: 30 at once for one name from one group gave 5 checked logins and 25
+  waits; 30 at once from 30 groups gave 20 checked logins and 10 waits of the hour. No login got the general error.
+- MCP per role, through access tokens of grants of `alice`, an Owner of the folder:
+  - The Reader, Writer and Manager addresses list exactly the 4, 8 and 12 tools of "Tools" in `mcp.md`. The read
+    tools carry `readOnlyHint`; `replace_page_content`, `edit_page_content`, `delete_page` and `delete_tab` carry
+    `destructiveHint`.
+  - `create_page` through the Reader address is an unknown tool and creates no page.
+  - A Reader token at the Writer address and a request without a token get 401 with `resource_metadata`; a foreign
+    `Origin` gets 403, `GET` 405 and the plain `/mcp` 404.
+  - With the role of `alice` lowered to Writer, the Manager address answers 403 `role_too_low` and the Writer address
+    still works; with the role back, the Manager address works again.
+- The connection of this review's AI app to the deployment, folder "philip", Manager: `list_folder`, `read_page` and
+  `search_pages` work against `https://hippowiki.maysprot.ddnss.eu`, and the app gets the 12 tools of a Manager.
+- The settings of the repository that hold: the default permissions of workflows are read-only and may not approve
+  pull requests; the alerts and security updates of Dependabot are on; the only collaborator is the owner, who
+  published the last releases; the default setup of CodeQL is `configured` for `actions` and
+  `javascript-typescript` (`gh api repos/PhilipMay/HippoWiki/code-scanning/default-setup`, 2026-11-23), and its first
+  run passed.
+
+### Not covered
+
+- Everything that needs the deployment or Traefik: the address that Traefik passes on, IPv6 from outside, the pool and
+  the latency of the database under a burst of logins, and the warnings of a correct setup.
+- Who may push to the image package: the token of `gh` lacks the scope `read:packages`.
+- Whether the connection of the AI app to the deployment was made through OAuth; the app was not asked.
+- The speed of the editor on a slower laptop, and in Safari and Firefox.
+- A scan of the published image for vulnerabilities, which needs a scanner to be downloaded.
+
+## Review of the list layout in the page view
+
+### Summary
+
+- Verdict: no Blocker. Bullet lists and task lists of bullet lists hold every rule of the layout in all cases, nested
+  to six levels, mixed with plain items, inside a quote and at phone width. The weak point is a task item of an
+  ordered list, whose wrapped lines and nested lists start under its checkbox instead of under its text. The task list
+  rule also takes an escaped marker for a task, and one current limit of `spec/pages.md` is easier to hit than its
+  wording says.
+- Findings: 3 in all, 0 Blocker, 0 Major, 2 Minor and 1 Nit (2 `issue:`, 1 `suggestion:`). Of the 3 Suggestions,
+  0 are High, 3 Medium and 0 Low.
+- To fix first: the indent of a task item of an ordered list.
+- Not covered by this review: Safari and Firefox (only the Chromium of the browser pane was used), a dark theme (the
+  app has none), and the user's page `tech/scheidung/todo`, which is not in the local dev database.
+
+### Scope and method
+
+- Reviewed: the layout of lists in the page view, `MarkdownContent` in
+  `src/features/pages/components/MarkdownContent.tsx`, and the task list rule in `src/features/pages/markdown.ts`, as
+  far as it decides which list item is a task. The rules checked against are "Rendering" and "Current limits" in
+  `spec/pages.md`.
+- Date: 2026-11-19. The code is the state of the branch `main` after the commit `wrap up task list layout`.
+- Evidence comes from three test pages in the local dev database (`next dev`, logged in as the seed user `alice`),
+  measured with a script in the browser pane at 1024 px and at 375 px width, and from screenshots. For every list
+  item the script read the left of its checkbox, of its text and of the item, its list marker, its height and the
+  left of a wrapped second line, and checked these rules:
+  - R1: in a bullet list, task items and plain items start their text at the same place.
+  - R2: the checkbox of a task item of a bullet list lies in the indent of the list, where the bullet would be, and
+    never left of the title heading.
+  - R3: a nested list moves 24 px to the right.
+  - R4: a task item of a bullet list has no marker, a plain item has its bullet, an ordered list keeps its numbers.
+  - R5: an item of one line is 24 px high, task or plain.
+  - R6: a wrapped line starts under the text of its item.
+  - R7: the page does not scroll sideways.
+- The cases, each under its own heading of a test page: task > task > task; task > bullet; bullet > task;
+  task > numbered; task > numbered task; numbered > task; numbered task > task; numbered task > numbered task;
+  numbered > numbered task; six levels of bullets, numbers and tasks; a bullet list of tasks and plain items with
+  nested mixed lists; a numbered list of tasks and plain items; a numbered task list from 3 to 12; long wrapping text
+  in bullet, numbered, task and plain items; bold, code, a link and strikethrough in task text; the markers `*`, `+`
+  and `1)`; nesting by two spaces; a task list in a quote; markers that are not tasks (`[ ]text`, `[y]`, `\[ ]`, an
+  empty `[ ]`); lists next to each other; a loose task list.
+- The view of a revision was compared with the page view of the same page: every item has the same position and
+  marker. The test pages were deleted afterwards; they can be restored from the deleted pages of the folder
+  `getting-started02`.
+
+### Findings
+
+#### issue: a task item of an ordered list has no hanging indent, so its wrapped lines and nested lists start under the checkbox
+
+- Location: `src/features/pages/components/MarkdownContent.tsx`, the `sx` rules for `li.task-list-item` of
+  `MarkdownContent`
+- Severity: Minor. Nothing is lost or wrong in the content; the nesting of a list is hard to see.
+- Category: correctness
+- Problem: in an ordered list, the checkbox of a task item is an inline element at the start of the item, so the text
+  of the item starts 28 px right of the start of the item (the default left margin of the checkbox, its width and its
+  right margin). A wrapped line and a nested list start at the start of the item, under the checkbox. "Rendering" in
+  `spec/pages.md` says that task lists are indented and nested like other lists; under a task item of an ordered
+  list, a nested list starts 4 px left of the text of its parent, where under every other item it starts 24 px right
+  of it.
+- Impact: a reader of a numbered task list with nested tasks or long items does not see which items belong to which
+  parent: the checkbox of a nested task sits right under the checkbox of its parent. It shows most at phone width,
+  where long items wrap.
+- Evidence: measured at 1024 px:
+  - `1. [ ] C7 parent numbered task` with `    - [x] C7 child task`: parent checkbox at 147, parent text at 171; child
+    checkbox at 143, child text at 167.
+  - Six levels: `1. [x] C10 d4 numbered task` has its text at 243, its nested `- [ ] C10 d5 task` at 239.
+  - `1. [ ] C14 numbered task with a long text …`: first line at 171, second line at 143; at 375 px first line at 85,
+    the other lines at 57. A plain numbered item and a bullet task item wrap under their text.
+- Suggestion (required): give a task item of an ordered list a left padding as wide as its checkbox and the space in
+  front of it, and move the checkbox back into that padding, as a bullet task item does with the indent of its list:
+
+  ```ts
+  "& ol > li.task-list-item": { pl: 3.5 },
+  "& ol > li.task-list-item > input": { ml: -3 },
+  ```
+
+  The first line stays where it is (checkbox at 147, text at 171), and wrapped lines and nested lists start at the
+  text. Extend the end-to-end test "task lists are indented and nested like other lists" in `e2e/pages.spec.ts` with a
+  bullet task under a numbered task, whose checkbox lies at or right of the text of its parent, and with a numbered
+  task that wraps, whose lines start at the same x.
+
+- Confidence: Medium. The two rules were tried by injecting them into the page in the browser pane, and the
+  measurements above came out as described, but only in Chromium, without the test the Suggestion names, and the
+  change is one users see.
+- Alternatives: leave the layout as it is and add it to "Current limits" in `spec/pages.md`; this keeps the code
+  simpler, but a nested list under a numbered task stays hard to read.
+
+#### issue: an escaped task marker `\[ ]` still makes a task item
+
+- Location: `src/features/pages/markdown.ts`, `taskLists()` and `TASK_MARKER`
+- Severity: Minor. Only content that escapes the marker on purpose is affected.
+- Category: correctness
+- Problem: `taskLists()` matches `TASK_MARKER` against the first text token of the item, after the inline parse has
+  turned `\[` into `[`. The escape is then gone, and `- \[ ] text` becomes a task with an unticked checkbox. The
+  comment of `TASK_MARKER` says that a list item whose text starts with `[ ] ` is a task "as in GitHub Flavored
+  Markdown"; in the source, the text of this item starts with a backslash, which in CommonMark makes the bracket a
+  plain character.
+- Impact: an author who writes `\[ ]` to show the brackets as text, for example to describe the syntax of task lists,
+  gets a checkbox instead, and has no way to write a list item that starts with `[ ] ` as text.
+- Evidence: the test page held `- \[ ] C19 escaped marker` next to `- [ ]C19 no space after marker` and
+  `- [y] C19 wrong letter`. The two others render as plain items with their brackets; the escaped one renders as a
+  task item with a checkbox, no bullet and the text `C19 escaped marker`.
+- Suggestion (required): match `TASK_MARKER` also against the source of the paragraph, the `content` of the `inline`
+  token (`tokens[index + 2].content`), which keeps the backslash, and mark the item as a task only when both match.
+  Add a unit test to "GitHub Flavored Markdown" in `src/features/pages/markdown.test.ts`: `- \[ ] escaped` renders
+  `<li>[ ] escaped</li>` and no checkbox.
+- Confidence: Medium. That the `content` of an `inline` token holds the source with its escapes is how markdown-it
+  builds it, but the fix was not run, and that GitHub shows `\[ ]` as text was not checked on GitHub itself.
+
+#### suggestion: "Current limits" does not say that a blank line before another list makes a task list loose
+
+- Location: `spec/pages.md`, "Current limits", the item on loose task lists
+- Severity: Nit. The behaviour is documented; only how easily it happens is not.
+- Category: docs
+- Problem: the limit says that "in a loose task list (blank lines between its items), the checkbox shows on a line
+  above the text of its item". It reads as if an author has to write blank lines between the tasks. A task list
+  followed by a blank line and another list with the same marker is one loose list in CommonMark, so its tasks show
+  the checkbox above the text as well.
+- Impact: an author who writes a task list, a blank line and a plain list with `-` sees all checkboxes jump above
+  their text and finds no hint in the spec why.
+- Evidence: `- [ ] C20 task after paragraph`, `- [x] C20 task after paragraph two`, a blank line, `- C20 plain list`,
+  `- C20 plain list two` render as one list of four items; each task item is 48 px high, its checkbox on a line of
+  its own above the text.
+- Suggestion (optional): add to the item in "Current limits": "a task list and a list with the same marker after a
+  blank line are one loose list, as in CommonMark".
+- Confidence: Medium. The wording is clear and the behaviour was shown, but lifting the limit instead is a product
+  choice.
+- Alternatives: lift the limit in the page view, by putting the checkbox of a task item into its first paragraph, and
+  add it to `roadmap.md` until then; this removes the cause, but changes the code and its tests.
+
+### Reviewed
+
+These cases hold every rule above, at 1024 px and at 375 px, without a finding:
+
+- Nesting of bullet lists, task lists and numbered lists under a bullet or task item, to six levels: every level moves
+  24 px, task and plain items of one list start their text at the same place, and the checkbox of a task item lies in
+  the indent of its list, never left of the title heading.
+- A bullet list of task items and plain items: the plain items keep `disc`, and `circle` or `square` when nested, as
+  in a list without tasks; the task items show no bullet.
+- Numbered lists keep their numbers with tasks in them, from a start number other than 1 and with two-digit numbers,
+  and a plain item of a numbered task list keeps its number without a checkbox.
+- Every item of one line is 24 px high, task or plain, so a mixed list keeps one rhythm.
+- Long text in a bullet task item wraps under its text.
+- Bold, code, links and strikethrough in the text of a task item, the markers `*`, `+` and `1)`, nesting by two
+  spaces, and a task list inside a quote.
+- `[ ]text`, `[y] text` and an empty `[ ]` are not tasks.
+- The page does not scroll sideways at 375 px, and the view of a revision lays the lists out like the page view.
+
+## Explorative test of the web application
+
+### Summary
+
+- Verdict: no Blocker. The app holds together well: rights are enforced on the server, rendered Markdown is safe, wiki
+  links follow every move and rename, and OAuth and MCP behave as an AI app expects. The two Major findings both lose
+  text that a user typed in the editor. Most other findings are about forms and dialogs that give stale or missing
+  feedback, and about layout on narrow screens.
+- Findings: 25 in all, 0 Blocker, 2 Major, 10 Minor and 13 Nit (`issue:` 12, `suggestion:` 1, `nit:` 12), plus 6
+  questions. Of the 25 Suggestions, 0 are High, 17 Medium and 8 Low.
+- To fix first: the two Major findings, "browser Back leaves the editor without asking" and "saving over a newer
+  version throws away the own changes".
+- Not covered: see "Not covered" at the end of this part.
+
+### Scope and method
+
+- Explorative test of the web application as a user sees it, without reading the specs or the code before the test.
+  Only `issue-report.md` (for this format) and, after the test, the part "Manual checks of the app and of the repository" (to drop duplicates; none
+  were found) were read.
+- Date: 2026-11-22. The code is the state of the branch `main` after the commit `add the report of the manual checks`.
+- The app ran as a production build (`next build` into its own build directory, `next start` on port 3100) against a
+  throwaway PostgreSQL container on port 5433, migrated, with the admin created by the admin setup. The server had
+  `HIPPOWIKI_PUBLIC_URL=http://localhost:3100` and a files directory of its own.
+- The browser was the Chromium of the Claude desktop app at 1024 × 768, with the mobile preset 375 × 812 for the
+  layout of a phone. A second user worked in parallel through `http://127.0.0.1:3100`, which keeps its own cookies.
+- Users: `admin`, `alice` (Owner of the folder `team-wiki`) and `bob` (Reader, then Writer, then without a role).
+  OAuth and MCP were driven with `curl` and a test client registered through `/oauth/register`.
+
+### Findings
+
+#### issue: browser Back leaves the editor without asking and loses the unsaved changes
+
+- Location: page editor, `/folders/<folder>/<page>.md?action=edit`; the "Discard changes?" dialog
+- Severity: Major. Text typed by the user is lost without a warning.
+- Category: correctness
+- Problem: a click on a link, such as "Folders" in the header, opens "Discard changes? The changes to the content are
+  not saved and will be lost." The Back button of the browser does not: the page view opens at once and the changes
+  are gone. Forward opens the editor again with the stored content.
+- Impact: every user who leaves the editor with Back, or with a Back gesture of a mouse or a trackpad, loses the edit
+  without being asked, while the app suggests elsewhere that it guards against this.
+- Evidence: open a page, click "Edit", type " Edited once." at the end of a line, press Back: the page view shows the
+  old text. The same happened when the editor was opened by typing its address.
+- Suggestion (required): ask the same "Discard changes?" question when the history entry changes while the editor
+  has unsaved changes, and set a `beforeunload` handler for leaving the app or reloading.
+- Confidence: Medium. How the router of Next.js lets a popstate be held up was not tried, and a `beforeunload`
+  dialog can only show the browser's own text.
+- Alternatives: keep a draft per page in `sessionStorage` and offer it when the editor opens again, which also
+  covers a closed tab, at the cost of a stale draft that has to be dismissed.
+
+#### issue: saving over a newer version throws away the own changes
+
+- Location: page editor, saving after someone else saved the same page; the notice "This page was changed by … after
+  you opened it."
+- Severity: Major. The change is detected, but the text of the user who saves second is lost.
+- Category: correctness
+- Problem: when the page was saved in between, Save reloads the editor with the newer content and shows the notice.
+  The text typed in this editor is replaced: it is neither kept, nor shown next to the newer version, nor reachable
+  with undo.
+- Impact: two people editing the same page, or one person in two tabs, lose the work of whoever saves second. The
+  notice suggests a merge, but there is nothing left to merge.
+- Evidence: open the same page in the editor in tabs A and B. Type " Edit from tab B." in B and save. Type " Edit from
+  tab A." in A and save: A shows the notice and the content with "Edit from tab B." only; Cmd+Z and Ctrl+Z bring
+  nothing back.
+- Suggestion (required): keep the user's text in the editor and show the newer version beside it, or a diff of both,
+  so that the user can merge and save again; the notice then says that the own text is still there.
+- Confidence: Low. How to show both versions is a design decision.
+- Alternatives: show the user's text read-only below the notice, with "Copy", which is simpler but leaves the merge
+  to the user.
+
+#### issue: a long word in a page widens the whole page
+
+- Location: page view, `/folders/<folder>/<page>.md`; also the layout of a phone
+- Severity: Minor
+- Category: correctness
+- Problem: a word without spaces, such as a long identifier or path, is not wrapped. It runs out of the content card
+  and the whole document gets a horizontal scrollbar. The editor wraps the same line.
+- Impact: a page with a long address or identifier is hard to read; on a phone the page scrolls sideways.
+- Evidence: a line `A_very_long_word_without_spaces_` followed by 100 × `A`: at 1024 px wide,
+  `document.documentElement.scrollWidth` is 1457; at 375 px it is 1371.
+- Suggestion (required): let the rendered content wrap long words, for example `overflow-wrap: anywhere` on the
+  content, and let tables and code blocks scroll inside their own box.
+- Confidence: Medium. The effect on tables and code blocks was not tried.
+
+#### issue: standard Markdown images and remote images break without a hint
+
+- Location: page view and editor; images in the content
+- Severity: Minor
+- Category: correctness
+- Problem: only `![[wide-banner.png]]` shows the uploaded image. `![alt text](wide-banner.png)` and
+  `![x](/folders/team-wiki/wide-banner.png)` render as broken images, because they point to the file page and not to
+  the file. `![remote](https://example.com/x.png)` renders as a broken image, because the Content Security Policy
+  allows images only from the wiki itself. The live preview shows all three as plain source, so the author does not
+  notice until the page is saved.
+- Impact: users who know Markdown from elsewhere, or paste content from other tools, get broken images and no
+  explanation.
+- Evidence: a page with these lines after uploading `wide-banner.png` (1600 × 400) to the folder: in the page view the
+  `<img>` of the three standard images have `naturalWidth` 0, the one of `![[wide-banner.png]]` 1600.
+- Suggestion (required): render a standard image whose target is a file of the folder like `![[...]]`, and show a
+  remote image as a link with a short note instead of a broken image; mark both in the live preview.
+- Confidence: Low. Whether standard image syntax should resolve files of the folder is a product decision.
+- Alternatives: keep the syntax as it is and only show a hint in the editor that files of the folder are embedded
+  with `![[file]]` and that images from other sites are not shown.
+
+#### issue: error messages of forms stay after the input was corrected
+
+- Location: "New page" ("Content must start with a title heading: # Title"); "Move or rename page" ("Name is already
+  in use"); "Restore page" ("Choose a place")
+- Severity: Minor
+- Category: error handling
+- Problem: the red frame and the message stay until the next submit, also after the input was fixed. In "Move or
+  rename page", "Name is already in use" was still shown under a free name while Save went through. The upload dialog
+  clears its message when a new file is chosen, so the forms disagree.
+- Impact: users read an error that no longer applies and may think the form is still wrong.
+- Evidence: in "Move or rename page", type the name of an existing page and press Enter, then type a free name and
+  pick another place: the message stays until Save.
+- Suggestion (required): clear the message of a field when the field changes, as the upload dialog does.
+- Confidence: Medium. All forms with this behaviour were not listed one by one.
+
+#### issue: removing another user's role takes one click, and changing a role gives no feedback
+
+- Location: folder roles, `/folders/<folder>?view=roles`
+- Severity: Minor
+- Category: correctness
+- Problem: "Remove" for another user takes the role away at once. "Remove" for oneself asks "Remove your own role on
+  this folder?" first. A new role picked in the select is saved at once without any message.
+- Impact: a slip of the mouse locks a colleague out of a folder, and nothing on the page tells the owner what
+  happened. Whether a role change was saved is only seen after a reload.
+- Evidence: as `alice`, Owner, click "Remove" next to `bob`: the row is gone without a question.
+- Suggestion (required): ask before removing any role, naming the user, and show a short confirmation after a role
+  was changed.
+- Confidence: Medium. A change users see.
+
+#### issue: the header does not fit on a phone
+
+- Location: header of every page at 375 px wide
+- Severity: Minor
+- Category: style
+- Problem: "Folders" and "Users" stack on two lines, the user name sits in between, and "Log out" breaks into
+  "LOG" and "OUT". The header takes about 70 px of the height. The editor toolbar also wraps into two rows.
+- Impact: on a phone the app looks broken and the header uses much of the screen.
+- Evidence: mobile preset 375 × 812 on `/folders/team-wiki`.
+- Suggestion (required): put the links and the account into a menu below a breakpoint, and keep "Log out" on one
+  line.
+- Confidence: Medium. A change users see.
+
+#### issue: search finds nothing for some words that are in a page
+
+- Location: folder search, `/folders/<folder>?view=search&q=…`
+- Severity: Minor
+- Category: correctness
+- Problem: `very` answers "No pages or files in this folder match very", although a page contains "a very very very
+  … long cell". `<script>` finds nothing, while `script` finds the page with `<script>` in its text. `a` finds only one
+  of the pages that contain the word "a".
+- Impact: users who search for a word they can see in a page get "no match" and stop trusting the search.
+- Evidence: the three queries above against the folder `team-wiki` of this test.
+- Suggestion (required): when every word of a query is dropped as a common word, say so instead of "no match", and
+  strip punctuation from the query as from the text.
+- Confidence: Low. Why `very` and `a` behave this way was not looked up; it looks like a stop-word list of the full
+  text search.
+
+#### issue: a word with umlauts finds fewer pages than the same word without
+
+- Location: folder search; the names that are proposed from a title
+- Severity: Minor
+- Category: correctness
+- Problem: a title "Ünïcode Café …" gets the proposed name `uenicode-cafe-co-test`, so "Ü" becomes "ue". The search
+  for `unicode` finds three pages, the one with the title and two that carry the name; the search for `Ünïcode` or
+  `ünïcode` finds only the page with the title.
+- Impact: in German content, searching with the umlaut misses the pages that only carry the word in their name or in
+  a wiki link.
+- Evidence: the queries `unicode`, `uenicode` and `Ünïcode` on the folder `team-wiki` of this test.
+- Suggestion (optional): fold umlauts in the query the same way as in names, or search both spellings.
+- Confidence: Low. Which folding is wanted for names and for search is a decision.
+
+#### issue: "Back to folders" on the not-found page leads the admin to another not-found page
+
+- Location: the not-found page as `admin`
+- Severity: Minor
+- Category: correctness
+- Problem: the admin has no folders, and `/folders` is a not-found page for the admin. The not-found page offers only
+  "Back to folders", which opens the same page again.
+- Impact: an admin who mistypes an address only gets out through the header.
+- Evidence: as `admin`, open `/does-not-exist` and click "Back to folders".
+- Suggestion (required): for the admin, point the button to "Users".
+- Confidence: Medium. The text of the button for the admin is a choice.
+
+#### issue: "Give role" leaves the Roles page
+
+- Location: "Give role" on `/folders/<folder>?view=roles`
+- Severity: Minor
+- Category: correctness
+- Problem: the dialog opens at `/folders/<folder>?action=give-role`, on top of the folder overview, not of the Roles
+  list. Cancel and Save both end on the folder overview.
+- Impact: an owner who gives several roles has to open the Roles page again after each one and does not see the new
+  role in the list.
+- Evidence: on the Roles page, click "Give role", then Cancel.
+- Suggestion (required): open the dialog on top of the Roles list and return there.
+- Confidence: Medium. A change users see.
+
+#### issue: losing access while editing shows "Page not found" and loses the edit
+
+- Location: page editor, saving after the own role was removed
+- Severity: Minor. Rare, and refusing the save is right.
+- Category: error handling
+- Problem: `bob`, Writer, edits a page; `alice` removes his role; `bob` saves. He gets the generic "Page not found"
+  page, and his text is gone.
+- Impact: the user does not learn that the access was taken away, and loses the text.
+- Evidence: the steps above with two browsers.
+- Suggestion (optional): keep the editor and show "You can no longer change this page", so that the text can be
+  copied.
+- Confidence: Low. Whether a refused save may reveal more than "not found" is a security decision.
+
+#### suggestion: the only owner can start to remove their own role
+
+- Location: folder roles, the row of the only Owner
+- Severity: Nit
+- Category: error handling
+- Problem: "Remove" and the select are active for the only Owner. "Remove" asks "Remove your own role on this folder?
+  You will no longer see the folder." and only after confirming answers "A folder needs at least one Owner, so the role
+  of its last Owner stays."
+- Impact: the dialog warns of something that cannot happen.
+- Evidence: as `alice`, the only Owner, click "Remove" in her own row.
+- Suggestion (optional): disable "Remove" for the last Owner, with the reason as a tooltip.
+- Confidence: Medium. A change users see.
+
+#### nit: not-found pages carry the title of the page that was asked for
+
+- Location: the not-found page
+- Severity: Nit
+- Category: style
+- Problem: the server sends the title "HippoWiki"; after loading, the tab title becomes "Folders – HippoWiki",
+  "Folder roles – HippoWiki" or "Users – HippoWiki", depending on the address.
+- Impact: the browser history and the tab show a not-found page as a real page.
+- Evidence: as `alice`, open `/folder-roles`.
+- Suggestion (optional): keep "Page not found – HippoWiki" as the title.
+- Confidence: Medium. Where the title is set was not looked up.
+
+#### nit: the history says "revisions 3 to 1 of 3"
+
+- Location: page history, `?view=history`
+- Severity: Nit
+- Category: style
+- Problem: "History: revisions 3 to 1 of 3" reads like a range that runs backwards.
+- Impact: none beyond reading.
+- Evidence: the history of a page with 3 revisions.
+- Suggestion (optional): "3 revisions" or "Revisions 1 to 3 of 3, newest first".
+- Confidence: Medium. Wording.
+
+#### nit: "Compare with revision" allows only older revisions and answers with the browser's message
+
+- Location: a revision of a page, "Compare with revision"
+- Severity: Nit
+- Category: style
+- Problem: on revision 2 of 3, a 3 or 99 gets the browser's own message "Value must be 1."; revision 1 has no compare
+  at all, and the current page has none either.
+- Impact: a user who wants to see what the latest change did must first open the previous revision.
+- Evidence: revision 2 of the page `uenicode-cafe-co-test` of this test, type 99, click "Compare".
+- Suggestion (optional): allow any other revision, or offer "Compare with the previous revision" on each revision and
+  on the current page.
+- Confidence: Low. Which comparisons are offered is a design decision.
+
+#### nit: the notice of a newer version names the user who is reading it
+
+- Location: page editor, the notice after a save over a newer version
+- Severity: Nit
+- Category: style
+- Problem: "This page was changed by alice via web …" is shown to `alice` herself, who saved in another tab.
+- Impact: a short moment of confusion.
+- Evidence: the steps of "saving over a newer version throws away the own changes".
+- Suggestion (optional): "by you" when the other change is by the same user.
+- Confidence: Medium. Wording.
+
+#### nit: "Restore page" selects no place when the old one is taken
+
+- Location: "Restore page" of a deleted page whose name is taken again
+- Severity: Nit
+- Category: style
+- Problem: no place is selected, "Address:" is missing until one is picked, and the dialog then grows, so that "Save"
+  moves away from under the pointer.
+- Impact: a click on "Save" right after picking a place can miss.
+- Evidence: delete a page, create a new page with its name, then restore the deleted one.
+- Suggestion (optional): select the old place and show "Name is already in use" right away, with the address line
+  always present.
+- Confidence: Medium. A change users see.
+
+#### nit: the page behind a dialog jumps up
+
+- Location: dialogs opened through `?action=…`, such as "Revert page", "Rename tab", "Delete page"
+- Severity: Nit
+- Category: style
+- Problem: the search box of the folder disappears behind the dialog, and the page moves up by about 45 px.
+- Impact: a visible jump each time a dialog opens.
+- Evidence: open a revision and click "Revert": the breadcrumbs move from y 127 to y 84.
+- Suggestion (optional): keep the search box while the dialog is open.
+- Confidence: Medium. Why it is removed was not looked up.
+
+#### nit: the same things are named differently
+
+- Location: dialogs and addresses
+- Severity: Nit
+- Category: style
+- Problem:
+  - The button of "New user" is "Create", the button of "New folder" is "Save".
+  - Users are created at `?action=create`, folders, pages and tabs at `?action=new` and `?action=new-tab`.
+  - "Deleted items" lists `uenicode-cafe-co-test`; every other list shows the name with `.md` at the end.
+  - The hint of a user name says "3 to 30 characters"; the hint of a folder name says no length, and the field stops
+    at 80 characters without a message.
+  - A tab is listed with a folder icon, inside a folder.
+- Impact: small inconsistencies that make the app feel less finished.
+- Evidence: the dialogs and lists named above.
+- Suggestion (optional): settle one word per action and one way to show names, and state the length in each hint.
+- Confidence: Medium. Wording.
+
+#### nit: the MCP message for an invalid name says the same thing twice
+
+- Location: MCP tool `create_page` with an invalid name
+- Severity: Nit
+- Category: style
+- Problem: the answer is "The name is not valid: Use lowercase letters, digits and single hyphens. A name has
+  lowercase letters, digits and single hyphens, such as release-notes. Nothing was changed."
+- Impact: a longer message for the AI app, no harm.
+- Evidence: `create_page` with `name` `Bad Name`.
+- Suggestion (optional): drop one of the two sentences.
+- Confidence: Medium. The message may be built from two parts that are used elsewhere.
+
+#### nit: Enter in the password field of "Connect an app" does nothing
+
+- Location: `/oauth/authorize`, the field "Your password"
+- Severity: Nit
+- Category: style
+- Problem: Enter in the password field does not approve; only a click on "Approve" does. The login and the password
+  change both submit on Enter.
+- Impact: keyboard users have to tab to the button.
+- Evidence: type the password and press Enter: nothing happens.
+- Suggestion (optional): let Enter approve, as in the other password forms.
+- Confidence: Low. Not submitting on Enter may be a deliberate guard against approving by accident.
+
+#### nit: a search address without words is a not-found page
+
+- Location: `/folders/<folder>?view=search&q=` and `q=%20%20%20`
+- Severity: Nit
+- Category: error handling
+- Problem: the address answers 404. The search box itself ignores an empty search.
+- Impact: only seen through a typed or shared address.
+- Evidence: `/folders/team-wiki?view=search&q=`.
+- Suggestion (optional): show the search page with an empty box, or the folder.
+- Confidence: Medium. A change users see.
+
+#### nit: the search result shows the target of a wiki link instead of the shown text
+
+- Location: snippets in the search results
+- Severity: Nit
+- Category: style
+- Problem: a page with "[[docs/something-else]]", shown as "Something Else", appears in a result as "… a
+  docs/something-else link".
+- Impact: the snippet does not match what the user reads on the page.
+- Evidence: the search for `bold` on the folder `team-wiki` of this test.
+- Suggestion (optional): use the shown text, the label or the title, in the snippet.
+- Confidence: Medium. How the snippet is built was not looked up.
+
+#### nit: the live preview shows a footnote as "^1"
+
+- Location: editor, live preview
+- Severity: Nit
+- Category: style
+- Problem: `[^1]` is shown as an underlined "^1", and the definition `[^1]: …` as "^1: …"; the page view shows a
+  raised 1 and a list of footnotes.
+- Impact: footnotes look different while writing.
+- Evidence: the line "Text with a footnote.[^1]" in live preview.
+- Suggestion (optional): show the reference raised, as the page view does.
+- Confidence: Low. How far the live preview should follow the page view is a choice.
+
+#### question: how does an admin help a user who forgot the password?
+
+- Location: `/users` as `admin`
+- The rows of the user list cannot be opened, and there is no action to set a new first password, to lock an account
+  or to remove it. Is this intended for now?
+
+#### question: can a folder be deleted?
+
+- Location: the folder page as Owner
+- The Owner can rename a folder but finds no way to delete one. A folder created by mistake, such as the 80 × `a`
+  folder of this test, can only be renamed. Is this intended?
+
+#### question: what does "Updated" mean in the list of folders?
+
+- Location: `/folders`
+- The folder `team-wiki` shows "Updated Nov 22, 2026, 8:22 PM by alice via web", although its pages were changed until
+  8:35 PM. Is "Updated" the change of the folder itself, such as its name? Users may read it as the latest change
+  inside.
+
+#### question: should deleting a page warn about the pages that link to it?
+
+- Location: "Delete page"
+- "Move or rename page" says "Links in 1 page will be updated." "Delete page" does not mention that other pages link
+  to the page, and after the delete the folder opens without any message. Would a hint such as "2 pages link here"
+  and a short "Page deleted" with a link to "Deleted items" help?
+
+#### question: should `![[file|200]]` set a width?
+
+- Location: embedded images
+- `![[wide-banner.png|200]]` shows the image at full width with the alt text "200". Users who know Obsidian expect a
+  width of 200 px. Is the text after `|` meant as a label only?
+
+#### question: is the amount of prefetching intended?
+
+- Location: every page
+- Each navigation prefetches the header links (`/`, `/folders`, `/users`, `/account`) again, and every action link of
+  the page, such as `?action=edit`, `?action=move-or-rename`, `?action=delete`, `?view=history` and the "create"
+  links of missing wiki links. About 500 such requests built up in an hour of testing, most of them aborted. Each is
+  a render on the server with database queries. Is this measured and fine for the deployment?
+
+### Reviewed
+
+- First login: the admin and each new user must set an own password; the rules for it are checked (built from the
+  name or the wiki name, the same as before, not repeated) and the other pages are not reachable before.
+- Users: names are validated, a duplicate is refused, the first password is shown once and Escape does not close
+  that dialog.
+- Rights: as Reader, every `?action=…` of the folder, page, tab and file and "Deleted items" answer 404; as Writer,
+  delete, rename of tabs and "Give role" answer 404 while edit, move and upload work. The last Owner cannot be removed.
+- Rendering: raw HTML, `<script>` and `onerror` in a page are shown as text; a `javascript:` link is not made a link;
+  missing wiki links point to "New page" with the name filled in and carry "Page does not exist"; an invalid target
+  carries "Not a valid page name"; footnotes, tables, task lists and code work.
+- Names from titles: "Ünïcode Café & Co. 🚀 / Test" becomes `uenicode-cafe-co-test`.
+- Wiki links: moving a page into a tab and renaming the tab rewrite the links in all pages, also links to missing
+  pages, and each rewrite is a revision "Links updated after a move or rename".
+- History: revisions, raw view, compare and revert work; revert records a new revision.
+- Deleted items: a deleted page can be read and restored under a new place when its name is taken.
+- Uploads: an SVG with a script, named `.png`, is refused as "Only PNG, JPEG, GIF, WebP and PDF files can be
+  uploaded."; files are served with `Content-Security-Policy: default-src 'none'; sandbox` and need a login.
+- Editor: "Discard changes?" on links, Esc then Tab leaves the editor, saving a page with the same name as a tab works.
+- Login: after six wrong passwords in a row, "Too many failed logins. Please try again in 1 minute." holds also for
+  the right password.
+- OAuth and MCP: the consent page shows the address of the app and its self-chosen name as text, needs the password and
+  offers 30, 90 or 365 days; a code works once; the Writer address lists 8 tools; pages created through MCP show "via
+  mcp"; revoking stops the access token and the refresh token at once.
+- No error in the log of the server during the whole test.
+
+### Not covered
+
+- Tabs deleted with their pages, files moved, a new version of a file uploaded, PDFs, files in tabs.
+- The MCP tools beyond `list_folder` and `create_page`, the Manager address and OAuth through a real AI app.
+- "Log out other browsers" and the password change from the account page.
+- Screen readers, Safari and Firefox, and the speed of the app.
+- The settings of the repository and anything that needs the deployment.
