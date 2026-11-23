@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getFileContent: vi.fn(),
   getLinkedFileContent: vi.fn(),
   uploadFile: vi.fn(),
+  uploadByLink: vi.fn(),
   debug: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock("@/features/files/service", () => ({ getFileContent: mocks.getFileConten
 vi.mock("@/features/folders/service", () => ({ getFolderByName: mocks.getFolderByName, getTab: mocks.getTab }));
 vi.mock("@/lib/revalidate", () => ({ revalidateContent: mocks.revalidateContent }));
 vi.mock("@/features/files/link-service", () => ({ getLinkedFileContent: mocks.getLinkedFileContent }));
+vi.mock("@/features/files/upload-link-service", () => ({ uploadByLink: mocks.uploadByLink }));
 vi.mock("@/lib/logger", () => ({
   logger: { debug: mocks.debug, info: mocks.info, warn: mocks.warn, error: mocks.error },
 }));
@@ -459,13 +461,16 @@ describe("handleUploadRequest", () => {
       "The image has more than 100 megapixels, the limit.",
     ],
     [{ code: "failed" }, 500, null, "The file could not be uploaded. Please try again."],
+    // The browser states no exact size, so this refusal never reaches it; it would answer as a failure.
+    [{ code: "wrong-size", expected: 4 }, 500, null, "The file could not be uploaded. Please try again."],
   ])("answers %j with its status, field and message", async (error, status, field, message) => {
     mocks.uploadFile.mockResolvedValue({ ok: false, error });
 
     const response = await handleUploadRequest(uploadRequest(), SEGMENTS);
 
     expect(response.status).toBe(status);
-    expect(await response.json()).toEqual({ ok: false, code: error.code, field, message });
+    const code = error.code === "wrong-size" ? "failed" : error.code;
+    expect(await response.json()).toEqual({ ok: false, code, field, message });
     expect(mocks.revalidateContent).not.toHaveBeenCalled();
   });
 
@@ -480,4 +485,194 @@ describe("handleUploadRequest", () => {
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({ ok: false, code, field, message, file: FILE_STATE });
   });
+});
+
+describe("handleUploadRequest with the token of a signed upload link", () => {
+  const TOKEN = "eyJ1c2UiOiJmaWxlLXVwbG9hZC1saW5rIn0.c2lnbmF0dXJlLW9mLXRoZS11cGxvYWQtbGluay10b2tlbg";
+  const GRANT_ID = "0d1f3b52-5d1e-4c8a-9a51-6c8e2f9b7a01";
+  /** The file as the upload links service stores it, with the version it stored. */
+  const UPLOADED = {
+    ...STORED,
+    lastEditedBy: { name: "alice", via: "mcp" },
+    version: { number: 3, size: 4, width: 30, height: 40 },
+  };
+  const CALLER = {
+    actor: { id: ACTOR_ID, name: "alice", type: "user" },
+    connection: { grantId: GRANT_ID, folderId: FOLDER_ID, role: "writer" },
+  };
+
+  /** A request of the upload address with the token, as `curl` sends it: without `Origin` and `Sec-Fetch-Site`. */
+  function linkRequest(query = `?token=${TOKEN}`, headers: Record<string, string> = {}): Request {
+    return new Request(`http://wiki.test/api/uploads/handbook/guides/diagram.png${query}`, {
+      method: "POST",
+      body: BYTES,
+      headers: { host: "wiki.test", "content-length": "4", ...headers },
+    });
+  }
+
+  /** Everything that was passed to the logger, as one string. */
+  function logged(): string {
+    return JSON.stringify([
+      mocks.debug.mock.calls,
+      mocks.info.mock.calls,
+      mocks.warn.mock.calls,
+      mocks.error.mock.calls,
+    ]);
+  }
+
+  beforeEach(() => {
+    mocks.uploadByLink.mockResolvedValue({ ok: true, value: { file: UPLOADED, caller: CALLER } });
+  });
+
+  it("stores the body by the link without reading the session, and answers 201 with the file and its links", async () => {
+    const response = await handleUploadRequest(linkRequest(), SEGMENTS);
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toStrictEqual({
+      ok: true,
+      name: "diagram.png",
+      tab: "guides",
+      type: "png",
+      size: 4,
+      version: 3,
+      width: 30,
+      height: 40,
+      wikiLink: "[[guides/diagram.png]]",
+      embedLink: "![[guides/diagram.png]]",
+    });
+    expect(mocks.getCurrentUser).not.toHaveBeenCalled();
+    expect(mocks.uploadFile).not.toHaveBeenCalled();
+    expect(mocks.revalidateContent).toHaveBeenCalled();
+    const [token, folder, tab, name, body, contentLength] = mocks.uploadByLink.mock.calls[0] as unknown[];
+    expect([token, folder, tab, name, contentLength]).toEqual([TOKEN, "handbook", "guides", "diagram.png", 4]);
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of body as AsyncIterable<Uint8Array>) chunks.push(chunk);
+    expect(new Uint8Array(Buffer.concat(chunks))).toEqual(BYTES);
+  });
+
+  it("answers a PDF placed directly in the folder without a tab, a width and a height, and without an embed link", async () => {
+    mocks.uploadByLink.mockResolvedValue({
+      ok: true,
+      value: {
+        file: {
+          ...UPLOADED,
+          name: "manual.pdf",
+          type: "pdf",
+          tab: null,
+          version: { ...UPLOADED.version, width: null, height: null },
+        },
+        caller: CALLER,
+      },
+    });
+
+    const response = await handleUploadRequest(linkRequest(), { folder: "handbook", path: ["manual.pdf"] });
+
+    expect(await response.json()).toMatchObject({
+      tab: null,
+      type: "pdf",
+      width: null,
+      height: null,
+      wikiLink: "[[manual.pdf]]",
+      embedLink: null,
+    });
+  });
+
+  it("logs a stored upload at info with the grant, the user, the place and the version, and no part of the token", async () => {
+    await handleUploadRequest(linkRequest(), SEGMENTS);
+
+    expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+      { grantId: GRANT_ID, userId: ACTOR_ID, folder: "handbook", tab: "guides", name: "diagram.png", version: 3 },
+      "file uploaded by link",
+    );
+    expect(logged()).not.toContain(TOKEN.slice(0, 16));
+    expect(logged()).not.toContain(TOKEN.slice(-16));
+  });
+
+  it("takes the upload with a session cookie by the token alone, and does not read the session", async () => {
+    const response = await handleUploadRequest(linkRequest(undefined, { cookie: "session=abc" }), SEGMENTS);
+
+    expect(response.status).toBe(201);
+    expect(mocks.getCurrentUser).not.toHaveBeenCalled();
+  });
+
+  it("passes a request from the own origin as well as one without Origin", async () => {
+    const response = await handleUploadRequest(
+      linkRequest(undefined, { origin: "http://wiki.test", "sec-fetch-site": "same-origin" }),
+      SEGMENTS,
+    );
+
+    expect(response.status).toBe(201);
+  });
+
+  it.each([
+    ["a foreign Origin", { origin: "https://evil.example" }],
+    ["Sec-Fetch-Site: cross-site", { "sec-fetch-site": "cross-site" }],
+    ["Sec-Fetch-Site: cross-site without Origin", { "sec-fetch-site": "cross-site", origin: "http://wiki.test" }],
+  ])("refuses %s with the not-found page and stores nothing", async (_case, headers) => {
+    await expect(handleUploadRequest(linkRequest(undefined, headers), SEGMENTS)).rejects.toBeInstanceOf(NotFoundError);
+
+    expect(mocks.uploadByLink).not.toHaveBeenCalled();
+    expect(logged()).not.toContain(TOKEN.slice(0, 16));
+  });
+
+  it.each([
+    ["replace next to the token", `?token=${TOKEN}&replace=1`],
+    ["strip next to the token", `?token=${TOKEN}&strip=0`],
+    ["removeMetadata next to the token", `?token=${TOKEN}&removeMetadata=0`],
+    ["a second token", `?token=${TOKEN}&token=${TOKEN}`],
+    ["another key without a value", `?token=${TOKEN}&download`],
+  ])("refuses %s with the not-found page and stores nothing", async (_case, query) => {
+    await expect(handleUploadRequest(linkRequest(query), SEGMENTS)).rejects.toBeInstanceOf(NotFoundError);
+
+    expect(mocks.uploadByLink).not.toHaveBeenCalled();
+    expect(mocks.getCurrentUser).not.toHaveBeenCalled();
+  });
+
+  it("refuses an address with more segments with the not-found page", async () => {
+    await expect(
+      handleUploadRequest(linkRequest(), { folder: "handbook", path: ["guides", "more", "x.png"] }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(mocks.uploadByLink).not.toHaveBeenCalled();
+  });
+
+  it("answers a link that is not accepted with the not-found page, as for every reason", async () => {
+    mocks.uploadByLink.mockResolvedValue({ ok: false, error: { code: "not-accepted" } });
+
+    await expect(handleUploadRequest(linkRequest(), SEGMENTS)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(handleUploadRequest(linkRequest("?token=forged"), SEGMENTS)).rejects.toBeInstanceOf(NotFoundError);
+    expect(mocks.revalidateContent).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ code: "tab-changed" }, 404, "The tab of the link was renamed or deleted"],
+    [{ code: "name-taken" }, 409, "A file of this name was stored at this place after the link was made"],
+    [{ code: "file-changed" }, 409, "The file was changed, moved, renamed or deleted after the link was made"],
+    [{ code: "wrong-type", detected: null, expected: "png" }, 415, "The file is none of the accepted types"],
+    [
+      { code: "wrong-type", detected: "pdf", expected: "png" },
+      415,
+      "The file is a PDF, but the link is for a name that ends in .png",
+    ],
+    [{ code: "wrong-size", expected: 4096 }, 400, "The file does not have the size of 4096 bytes"],
+    [{ code: "too-large", limit: 1_048_576 }, 413, "The file is larger than 1 MiB, the size limit of the wiki"],
+    [{ code: "invalid-image", reason: "unreadable" }, 422, "The image could not be read"],
+    [{ code: "invalid-image", reason: "too-many-pixels" }, 422, "The image has more than 100 megapixels"],
+    [{ code: "disk-full" }, 507, "The file does not fit on the disk of the server"],
+    [{ code: "failed" }, 500, "The file could not be stored"],
+  ])(
+    "answers the refusal %j of a valid link with its status and a message that says why",
+    async (error, status, start) => {
+      mocks.uploadByLink.mockResolvedValue({ ok: false, error });
+
+      const response = await handleUploadRequest(linkRequest(), SEGMENTS);
+
+      expect(response.status).toBe(status);
+      const answer = (await response.json()) as { ok: boolean; code: string; message: string };
+      expect(answer).toStrictEqual({ ok: false, code: error.code, message: expect.any(String) });
+      expect(answer.message.startsWith(start)).toBe(true);
+      expect(answer.message).toContain("Nothing was stored.");
+      expect(mocks.revalidateContent).not.toHaveBeenCalled();
+      expect(logged()).not.toContain(TOKEN.slice(0, 16));
+    },
+  );
 });

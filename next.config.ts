@@ -62,11 +62,11 @@ const nextConfig: NextConfig = {
   // under `next dev` and `next start` alike; without a session cookie `src/proxy.ts` sends it to the login page first.
   // The images of files are processed when they are uploaded, in a route of their own (`src/features/files/`).
   images: { unoptimized: true },
-  // The development server logs every incoming request with its address. A file address with a query is left out,
-  // because the query of a download by a signed link holds its token, which no log of the wiki may hold; every query of
-  // a file address is left out, not only `token`, since the key may also be written percent-encoded. A production
-  // server logs no requests.
-  logging: { incomingRequests: { ignore: [/^\/files\/[^?]*\?/] } },
+  // The development server logs every incoming request with its address. A file address and an upload address with a
+  // query are left out, because the query of a download or an upload by a signed link holds its token, which no log of
+  // the wiki may hold; every query of these addresses is left out, not only `token`, since the key may also be written
+  // percent-encoded. A production server logs no requests.
+  logging: { incomingRequests: { ignore: [/^\/files\/[^?]*\?/, /^\/api\/uploads\/[^?]*\?/] } },
   async headers() {
     return [
       // Every address but `/files` and those below it, which get the headers of the files instead.

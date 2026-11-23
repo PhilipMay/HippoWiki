@@ -19,11 +19,19 @@
 // (`experimental.proxyClientMaxBodySize`). It checks the session itself, refuses a request from another site (an
 // `Origin` other than the own, or `Sec-Fetch-Site: cross-site`), a user with the first password, an admin and a user
 // who may not upload with the not-found page, and answers everything else as JSON (`UploadAnswer` of `forms.ts`).
+//
+// A `POST` of the upload address with the query `token` is an upload by a signed upload link, which an AI app got
+// through MCP (`upload-link-service.ts`). It is checked by the token alone, with or without a session, and the session
+// is not read; its query is exactly the one `token`, because every choice of the upload comes from the link. A request
+// from another site is refused as in the browser, but one without `Origin`, as `curl` sends it, passes. A link that is
+// broken, forged, expired or no longer accepted answers the same not-found page for every reason; the refusal of a
+// valid link answers JSON with a message for the app (`UploadByLinkAnswer`). The token is never logged.
 
 import { notFound } from "next/navigation";
 
 import { getCurrentUser } from "@/features/auth/session";
 import * as linkService from "@/features/files/link-service";
+import * as uploadLinkService from "@/features/files/upload-link-service";
 import { inBrowser, type BrowserActor } from "@/features/folder-roles/actors";
 import {
   FOLDER_GONE_MESSAGE,
@@ -35,8 +43,9 @@ import {
 } from "@/features/files/forms";
 import { parseNumberParam } from "@/features/files/schema";
 import * as fileService from "@/features/files/service";
-import { ACCEPTED_TYPES_MESSAGE, FILE_TYPES } from "@/features/files/types";
+import { ACCEPTED_TYPES_MESSAGE, FILE_TYPES, isImageType, type FileType } from "@/features/files/types";
 import * as folderService from "@/features/folders/service";
+import { embedLinkOf, wikiLinkOf } from "@/features/pages/wiki-link-target";
 import { FILE_LINK_TOKEN_PARAM, filePath } from "@/lib/addresses";
 import { getServerEnv } from "@/lib/env";
 import { formatBytes } from "@/lib/format";
@@ -204,12 +213,13 @@ function ownHosts(request: Request): string[] {
 /**
  * Whether the upload comes from a page of the wiki itself. A browser sends `Origin` with every `POST` of `fetch()`;
  * it must name one of the own hosts, and `Sec-Fetch-Site` must not say that the request crosses sites. So no page of
- * another site can make the browser of a logged-in user upload a file.
+ * another site can make the browser of a logged-in user upload a file. With `withoutOrigin`, a request without
+ * `Origin` passes as well, such as an upload by link that an app sends with `curl`, which no browser sends.
  */
-function isOwnOrigin(request: Request): boolean {
+function isOwnOrigin(request: Request, { withoutOrigin = false }: { withoutOrigin?: boolean } = {}): boolean {
   if (request.headers.get("sec-fetch-site") === "cross-site") return false;
   const origin = request.headers.get("origin");
-  if (origin === null) return false;
+  if (origin === null) return withoutOrigin;
   let host: string;
   try {
     host = new URL(origin).host;
@@ -317,16 +327,21 @@ function uploadRefusal(error: Exclude<fileService.UploadFileError, { code: "not-
 /**
  * Answers the `POST` of an upload: stores its body as the file of the name at the place of the address, as a new
  * file or, with `?replace=<lock version>`, as a new version of the file of that name, and answers with the address of
- * its details page. The image is written again without its metadata unless the query says `strip=0`.
+ * its details page. The image is written again without its metadata unless the query says `strip=0`. With the query
+ * `token` it is an upload by a signed link instead (`handleUploadLinkRequest()`).
  */
 export async function handleUploadRequest(request: Request, segments: FileSegments): Promise<Response> {
+  const url = new URL(request.url);
+  // Decided by the query alone, before the session is read: a request with a token is checked by the token only.
+  if (url.searchParams.has(FILE_LINK_TOKEN_PARAM)) return handleUploadLinkRequest(request, segments, url);
+
   if (!isOwnOrigin(request)) {
     logger.warn({ origin: request.headers.get("origin") }, "upload from another site refused");
     notFound();
   }
   const actor = await sessionActor();
   const place = placeOf(segments);
-  const query = uploadQuery(new URL(request.url));
+  const query = uploadQuery(url);
   if (!actor || !place || !query) notFound();
 
   const folder = await folderService.getFolderByName(actor, place.folder);
@@ -354,5 +369,175 @@ export async function handleUploadRequest(request: Request, segments: FileSegmen
   revalidateContent();
   const file = uploaded.value;
   const answer: UploadAnswer = { ok: true, address: filePath(file.folder.name, file.tab?.name ?? null, file.name) };
+  return Response.json(answer, { status: 201 });
+}
+
+/** The token of an upload by link: exactly one `token` and no other query; `null` for anything else. */
+function uploadLinkToken(url: URL): string | null {
+  const keys = [...url.searchParams.keys()];
+  const tokens = url.searchParams.getAll(FILE_LINK_TOKEN_PARAM);
+  if (keys.length !== 1 || tokens.length !== 1) return null;
+  return tokens[0] ?? null;
+}
+
+/**
+ * The answer of an upload by link, as JSON: the file as stored, with what a page needs to show or link it, the same
+ * texts as `read_file` of MCP gives; or why a valid link stored nothing, with what to do next.
+ */
+type UploadByLinkAnswer =
+  | {
+      ok: true;
+      name: string;
+      tab: string | null;
+      type: FileType;
+      /** The size of the stored version in bytes, of an image as written again without its metadata. */
+      size: number;
+      version: number;
+      width: number | null;
+      height: number | null;
+      wikiLink: string;
+      embedLink: string | null;
+    }
+  | { ok: false; code: string; message: string };
+
+/** The refusal of an upload by a valid link, as JSON, with its status and the message for the app. */
+function refusedByLink(status: number, code: string, message: string): Response {
+  const answer: UploadByLinkAnswer = { ok: false, code, message };
+  return Response.json(answer, { status });
+}
+
+/** What every refusal of an upload by a valid link adds: nothing of the file is kept. */
+const NOTHING_STORED = "Nothing was stored.";
+
+/**
+ * The answer to the refusal of an upload by a valid link: the status of the upload in the browser for the same
+ * reason, with a message for an AI app, which says why and what to do next.
+ */
+function uploadByLinkRefusal(error: Exclude<uploadLinkService.UploadByLinkError, { code: "not-accepted" }>): Response {
+  switch (error.code) {
+    case "tab-changed":
+      return refusedByLink(
+        404,
+        error.code,
+        `The tab of the link was renamed or deleted after the link was made. ${NOTHING_STORED} Use list_folder to ` +
+          "see the tabs of the folder, and get a new link.",
+      );
+    case "name-taken":
+      return refusedByLink(
+        409,
+        error.code,
+        `A file of this name was stored at this place after the link was made, also by an upload by this link. ` +
+          `${NOTHING_STORED} Read the file with read_file; to replace it, get a link for a new version with its ` +
+          "lockVersion.",
+      );
+    case "file-changed":
+      return refusedByLink(
+        409,
+        error.code,
+        `The file was changed, moved, renamed or deleted after the link was made, also by an upload by this link. ` +
+          `${NOTHING_STORED} Read the file again with read_file and decide what to do.`,
+      );
+    case "wrong-type":
+      return refusedByLink(
+        415,
+        error.code,
+        error.detected === null
+          ? `The file is none of the accepted types: PNG, JPEG, GIF, WebP and PDF. ${NOTHING_STORED}`
+          : `The file is a ${FILE_TYPES[error.detected].label}, but the link is for a name that ends in ` +
+              `.${FILE_TYPES[error.expected].extension}. ${NOTHING_STORED} Get a link for a name that ends in ` +
+              `.${FILE_TYPES[error.detected].extension}.`,
+      );
+    case "wrong-size":
+      return refusedByLink(
+        400,
+        error.code,
+        `The file does not have the size of ${error.expected} bytes that was stated for the link. ${NOTHING_STORED} ` +
+          "Get a new link with the exact size of the file in bytes.",
+      );
+    case "too-large":
+      return refusedByLink(
+        413,
+        error.code,
+        `The file is larger than ${formatBytes(error.limit)}, the size limit of the wiki. ${NOTHING_STORED}`,
+      );
+    case "invalid-image":
+      return refusedByLink(
+        422,
+        error.code,
+        error.reason === "too-many-pixels"
+          ? `The image has more than 100 megapixels, the limit. ${NOTHING_STORED}`
+          : `The image could not be read as an image of its type; it may be damaged. ${NOTHING_STORED}`,
+      );
+    case "disk-full":
+      return refusedByLink(
+        507,
+        error.code,
+        `The file does not fit on the disk of the server. ${NOTHING_STORED} Try again later.`,
+      );
+    case "failed":
+      return refusedByLink(500, error.code, `The file could not be stored. ${NOTHING_STORED} Try again later.`);
+  }
+}
+
+/**
+ * Answers an upload by a signed upload link: stores the body as the file of the link, if the token is valid for the
+ * address (`uploadByLink()` of the upload links service), and answers `201` with the file as stored. A request from
+ * another site, a query besides the one `token`, and a link that is broken, forged, expired or no longer accepted
+ * answer the not-found page, the same for every reason; a valid link whose upload is refused answers JSON with the
+ * reason. Every stored upload is logged at `info` with the grant, the user, the place and the version number, because
+ * whoever holds the link may upload; neither the token nor the address with its query is logged. Neither the last use
+ * of the grant nor the rate limit of MCP is touched.
+ */
+async function handleUploadLinkRequest(request: Request, segments: FileSegments, url: URL): Promise<Response> {
+  if (!isOwnOrigin(request, { withoutOrigin: true })) {
+    logger.warn({ origin: request.headers.get("origin") }, "upload from another site refused");
+    notFound();
+  }
+  const place = placeOf(segments);
+  const token = uploadLinkToken(url);
+  if (!place || token === null) {
+    logger.info({ reason: "address" }, "upload link refused");
+    notFound();
+  }
+
+  const uploaded = await uploadLinkService.uploadByLink(
+    token,
+    place.folder,
+    place.tab,
+    place.name,
+    bodyOf(request),
+    contentLengthOf(request),
+  );
+  if (!uploaded.ok) {
+    if (uploaded.error.code === "not-accepted") notFound();
+    return uploadByLinkRefusal(uploaded.error);
+  }
+
+  revalidateContent();
+  const { file, caller } = uploaded.value;
+  const tab = file.tab?.name ?? null;
+  logger.info(
+    {
+      grantId: caller.connection.grantId,
+      userId: caller.actor.id,
+      folder: file.folder.name,
+      tab,
+      name: file.name,
+      version: file.version.number,
+    },
+    "file uploaded by link",
+  );
+  const answer: UploadByLinkAnswer = {
+    ok: true,
+    name: file.name,
+    tab,
+    type: file.type,
+    size: file.version.size,
+    version: file.version.number,
+    width: file.version.width,
+    height: file.version.height,
+    wikiLink: wikiLinkOf({ tab, name: file.name }),
+    embedLink: isImageType(file.type) ? embedLinkOf({ tab, name: file.name }) : null,
+  };
   return Response.json(answer, { status: 201 });
 }

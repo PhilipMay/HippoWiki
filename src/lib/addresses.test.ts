@@ -40,6 +40,7 @@ import {
   pageRevertPath,
   pageRevisionPath,
   uploadPath,
+  uploadLinkPath,
   parseAccountNotice,
   parseAction,
   parseChoice,
@@ -202,6 +203,15 @@ describe("paths", () => {
     );
     expect(uploadPath("handbook", null, "manual.pdf", { replace: 2 })).toBe(
       "/api/uploads/handbook/manual.pdf?replace=2",
+    );
+  });
+
+  it("builds the upload address of a signed upload link with the token as its only query", () => {
+    expect(uploadLinkPath("handbook", null, "diagram.png", "abc.def")).toBe(
+      "/api/uploads/handbook/diagram.png?token=abc.def",
+    );
+    expect(uploadLinkPath("handbook", "guides", "manual.pdf", "a-b_c.d")).toBe(
+      "/api/uploads/handbook/guides/manual.pdf?token=a-b_c.d",
     );
   });
 

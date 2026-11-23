@@ -705,3 +705,39 @@ export async function signFileLinkToken({
     .digest("base64url");
   return `${dataPart}.${signature}`;
 }
+
+/**
+ * The token of a signed upload link, as `get_file_upload_link` makes it (`src/features/files/link-token.ts`), signed
+ * with the key of the test database: the data of the link for the grant, the tab (`null` for the folder itself), the
+ * name, the exact size, the choice of the metadata (`strip`, by default `true`), and for a new version the file and its
+ * lock version (by default `null` for a new file), expiring at `exp` (whole seconds since 1970, by default ten minutes
+ * from now), with `changes` applied to the data, a field set to `undefined` left out.
+ */
+export async function signUploadLinkToken({
+  grant,
+  tab = null,
+  name,
+  size,
+  strip = true,
+  file = null,
+  lockVersion = null,
+  exp = Math.floor(Date.now() / 1000) + 600,
+  changes = {},
+}: {
+  grant: string;
+  tab?: string | null;
+  name: string;
+  size: number;
+  strip?: boolean;
+  file?: string | null;
+  lockVersion?: number | null;
+  exp?: number;
+  changes?: Record<string, unknown>;
+}): Promise<string> {
+  const data = { use: "file-upload-link", v: 1, grant, tab, name, size, strip, file, lockVersion, exp, ...changes };
+  const dataPart = Buffer.from(JSON.stringify(data)).toString("base64url");
+  const signature = createHmac("sha256", await fileLinkKey())
+    .update(dataPart)
+    .digest("base64url");
+  return `${dataPart}.${signature}`;
+}

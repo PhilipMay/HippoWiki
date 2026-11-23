@@ -557,6 +557,16 @@ export function uploadPath(
   return query.length === 0 ? path : `${path}?${query.join("&")}`;
 }
 
+/**
+ * The upload address of a file with the token of a signed upload link, which stores one upload of the file without a
+ * login for a few minutes: `/api/uploads/<folder>/[<tab>/]<name.ext>?token=<token>`, with the token as its only query,
+ * because every choice of the upload comes from the link. The token is of the alphabet of base64url and a dot, so it
+ * needs no encoding.
+ */
+export function uploadLinkPath(folder: string, tab: string | null, name: string, token: string): string {
+  return `${placedFilePath(UPLOADS_PATH, folder, tab, name)}?${FILE_LINK_TOKEN_PARAM}=${token}`;
+}
+
 /** A page as its address names it, with `.md` after its name: how lists, breadcrumbs and dialogs label a page. */
 export function pageLabel(name: string): string {
   return `${name}${PAGE_SUFFIX}`;
