@@ -115,6 +115,8 @@ export type FileSearchResult = {
   height: number | null;
   updatedAt: Date;
   lastEditedBy: LastEditor;
+  /** The lock version of the file, which a new version through MCP is based on. */
+  lockVersion: number;
 };
 
 /**
@@ -155,6 +157,7 @@ type FileRow = {
   type: FileType;
   tab: string | null;
   updatedAt: Date;
+  lockVersion: number;
   username: string;
   via: ChangeChannel;
   size: number;
@@ -484,10 +487,10 @@ async function searchFiles(
   // One statement with the fields of the files: a read with relations of Prisma would send several queries at once
   // over the one connection of the transaction.
   const rows = await tx.$queryRaw<FileRow[]>`
-    SELECT m.id, m.name, m.type::text AS type, m.tab, m."updatedAt", u.username, m."lastEditedVia"::text AS via,
-      v.size, v.width, v.height
+    SELECT m.id, m.name, m.type::text AS type, m.tab, m."updatedAt", m."lockVersion", u.username,
+      m."lastEditedVia"::text AS via, v.size, v.width, v.height
     FROM (
-      SELECT f.id, f.name, f.type, f."updatedAt", f."lastEditedById", f."lastEditedVia", t.name AS tab,
+      SELECT f.id, f.name, f.type, f."updatedAt", f."lockVersion", f."lastEditedById", f."lastEditedVia", t.name AS tab,
         split_part(f.name, '.', 1) AS base
       FROM "File" AS f
         LEFT JOIN "Tab" AS t ON t.id = f."tabId"

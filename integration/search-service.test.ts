@@ -463,6 +463,7 @@ describe("files", () => {
         height: file.versions[0]?.height,
         updatedAt: file.updatedAt,
         lastEditedBy: { name: "alice", via: "web" },
+        lockVersion: file.lockVersion,
       },
     ]);
     expect(found.moreFiles).toBe(false);

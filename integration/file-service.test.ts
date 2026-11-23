@@ -616,6 +616,37 @@ describe("the reads of files", () => {
     expect(bytes).toEqual(await blobBytes(content?.version.sha256 ?? ""));
   });
 
+  it("give the lock version of a file, one higher after a new version, a move and a rename", async () => {
+    const folder = await createFolder({ name: "handbook" });
+    const tab = await createTab({ folder, name: "guides" });
+    const file = await createFile({ folder, name: "manual.pdf" });
+    /** The lock version of the file as `getFile()` and `listAllFolderFiles()` give it, at its place. */
+    const lockVersions = async (tabName: string | null, name: string) => [
+      (await fileService.getFile(actor, "handbook", tabName, name))?.lockVersion,
+      (await fileService.listAllFolderFiles(actor, folder.id))?.find((listed) => listed.name === name)?.lockVersion,
+    ];
+
+    expect(await lockVersions(null, "manual.pdf")).toEqual([1, 1]);
+
+    await expect(
+      fileService.uploadFile(actor, { folderId: folder.id, tabId: null }, "manual.pdf", [pdfBytes("second")], {
+        ...NEW_FILE,
+        replace: 1,
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(await lockVersions(null, "manual.pdf")).toEqual([2, 2]);
+
+    await expect(
+      fileService.moveOrRenameFile(actor, file.id, { name: "manual.pdf", tabId: tab.id, lockVersion: 2 }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(await lockVersions("guides", "manual.pdf")).toEqual([3, 3]);
+
+    await expect(
+      fileService.moveOrRenameFile(actor, file.id, { name: "handbook.pdf", tabId: tab.id, lockVersion: 3 }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(await lockVersions("guides", "handbook.pdf")).toEqual([4, 4]);
+  });
+
   it("read nothing of a folder without a role and nothing of a version that does not exist", async () => {
     const bob = await createBob();
     const folder = await createFolder({ name: "secret", roles: [{ user: bob, role: "owner" }] });

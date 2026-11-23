@@ -445,7 +445,7 @@ describe("list_folder", () => {
     expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(result.structuredContent);
   });
 
-  it("returns the files of the folder, those placed directly in it first, with their details and addresses and without their content", async () => {
+  it("returns the files of the folder, those placed directly in it first, with their details, addresses and lock versions and without their content", async () => {
     mocks.listTabs.mockResolvedValue([]);
     mocks.listAllFolderPages.mockResolvedValue([]);
     const file = (name: string, tab: string | null) => ({
@@ -457,6 +457,7 @@ describe("list_folder", () => {
       height: name.endsWith(".pdf") ? null : 480,
       updatedAt: CHANGED,
       lastEditedBy: EDITOR,
+      lockVersion: name === "diagram.png" ? 5 : 1,
     });
     // The service returns the files by name and then by tab.
     mocks.listAllFolderFiles.mockResolvedValue([
@@ -488,6 +489,7 @@ describe("list_folder", () => {
       lastChanged: CHANGED.toISOString(),
       lastEditedBy: "alice",
       lastEditedVia: "web",
+      lockVersion: 5,
     });
     expect(files[0]).toMatchObject({
       type: "pdf",
@@ -643,7 +645,7 @@ describe("read_page", () => {
 });
 
 describe("read_file", () => {
-  it("returns the details of a file of the folder of the connection by tab and name, never its content", async () => {
+  it("returns the details of a file of the folder of the connection by tab and name with its lock version, never its content", async () => {
     mocks.getFile.mockResolvedValue(fileWithPlace("diagram.png", "guides"));
     mocks.listPagesLinkingToFile.mockResolvedValue([
       { id: "p1", name: "network", title: "Network", tab: { name: "guides" } },
@@ -669,6 +671,7 @@ describe("read_file", () => {
       lastChanged: CHANGED.toISOString(),
       lastEditedBy: "bob",
       lastEditedVia: "mcp",
+      lockVersion: 3,
       versions: 2,
       shownOrLinkedFrom: [
         { name: "network", tab: "guides", title: "Network" },
@@ -895,6 +898,7 @@ describe("search_pages", () => {
       height: image ? 480 : null,
       updatedAt: CHANGED,
       lastEditedBy: { name: "mike", via: "web" as const },
+      lockVersion: 4,
     };
   }
 
@@ -986,6 +990,7 @@ describe("search_pages", () => {
           lastChanged: CHANGED.toISOString(),
           lastEditedBy: "mike",
           lastEditedVia: "web",
+          lockVersion: 4,
         },
         {
           name: "manual.pdf",
@@ -1016,6 +1021,7 @@ describe("search_pages", () => {
       "lastChanged",
       "lastEditedBy",
       "lastEditedVia",
+      "lockVersion",
     ]);
   });
 

@@ -281,6 +281,13 @@ export const fileOutput = z.object({
   lastChanged: lastChangedOutput("file"),
   lastEditedBy: lastEditedByOutput("file"),
   lastEditedVia: lastEditedViaOutput("file"),
+  lockVersion: z
+    .number()
+    .int()
+    .describe(
+      "The lock version of the file, counted up by every new version, move and rename; get_file_upload_link takes " +
+        "it for a new version of the file, which is refused if the file has changed since",
+    ),
 });
 
 export const listFolderOutput = z.object({

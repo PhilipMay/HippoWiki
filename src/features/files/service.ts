@@ -293,7 +293,7 @@ export async function listTabFiles(actor: ContentActor, tabId: string): Promise<
 
 /**
  * A file of the folder as the Markdown editor and `list_folder` of MCP know it: its place, its type, the size, width
- * and height of its current version, and its last change.
+ * and height of its current version, its last change and its lock version, which a new version through MCP is based on.
  */
 export type FolderFile = {
   name: string;
@@ -304,6 +304,7 @@ export type FolderFile = {
   height: number | null;
   updatedAt: Date;
   lastEditedBy: LastEditor;
+  lockVersion: number;
 };
 
 /**
@@ -321,6 +322,7 @@ export async function listAllFolderFiles(actor: ContentActor, folderId: string):
       name: true,
       type: true,
       updatedAt: true,
+      lockVersion: true,
       ...LAST_EDITOR_SELECT,
       tab: { select: { name: true } },
       versions: { select: { size: true, width: true, height: true }, orderBy: { number: "desc" }, take: 1 },

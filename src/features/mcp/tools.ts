@@ -237,6 +237,7 @@ function fileData(options: WikiToolsOptions, file: fileService.FolderFile): z.in
     lastChanged: file.updatedAt.toISOString(),
     lastEditedBy: file.lastEditedBy.name,
     lastEditedVia: file.lastEditedBy.via,
+    lockVersion: file.lockVersion,
   };
 }
 
@@ -354,6 +355,7 @@ export async function readFile(
           height: current.height,
           updatedAt: file.updatedAt,
           lastEditedBy: file.lastEditedBy,
+          lockVersion: file.lockVersion,
         }),
         versions: file.versions.length,
         shownOrLinkedFrom: linking.map((page) => ({ name: page.name, tab: page.tab?.name ?? null, title: page.title })),

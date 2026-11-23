@@ -3,8 +3,18 @@
 import { ADDRESS_HINT, USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
 import { NAME_MAX_LENGTH } from "@/lib/name-limits";
 
-import { NO_STORAGE_STATE } from "./support/auth";
-import { createFile, createFolder, createGrant, createPage, createTab, createUser } from "./support/database";
+import { KNOWN_USER } from "../prisma/known-users";
+import { NO_STORAGE_STATE, USER_STORAGE_STATE } from "./support/auth";
+import {
+  createFile,
+  createFolder,
+  createFolderRole,
+  createGrant,
+  createPage,
+  createTab,
+  createUser,
+} from "./support/database";
+import { pdfBytes, uploadFile } from "./support/files";
 import { call, mcpPath, send, setUpProjects } from "./support/mcp";
 import { ISSUER } from "./support/oauth";
 import { expect, test } from "./support/test";
@@ -414,6 +424,7 @@ test.describe("files", () => {
         lastChanged: "2026-03-05T09:00:00.000Z",
         lastEditedBy: "bob",
         lastEditedVia: "mcp",
+        lockVersion: diagram.lockVersion,
       });
 
       const read = await call(request, "read_file", { tab: "guides", file: "diagram.png" }, token, to);
@@ -450,6 +461,42 @@ test.describe("files", () => {
         expect(JSON.stringify(result), role).not.toMatch(/%PDF|base64|\\u0089PNG/);
       }
     }
+  });
+
+  test("read_file and list_folder give the lock version of a file, one higher after a new version uploaded in the browser", async ({
+    request,
+    browser,
+  }) => {
+    await createFile({ folder: projects, name: "manual.pdf", editor: owner });
+    /** The lock version of the file as read_file and list_folder give it. */
+    async function lockVersions(): Promise<unknown[]> {
+      const read = await call(request, "read_file", { file: "manual.pdf" });
+      const listed = await call(request, "list_folder");
+      const { files } = listed.structuredContent as { files: { name: string; lockVersion: number }[] };
+      return [
+        (read.structuredContent as { lockVersion: number }).lockVersion,
+        files.find(({ name }) => name === "manual.pdf")?.lockVersion,
+      ];
+    }
+    expect(await lockVersions()).toEqual([1, 1]);
+
+    // The known user `alice` uploads a new version in the browser, based on the lock version that read_file gave.
+    await createFolderRole({ folder: projects, user: KNOWN_USER, role: "writer" });
+    const context = await browser.newContext({ storageState: USER_STORAGE_STATE });
+    try {
+      const page = await context.newPage();
+      const response = await uploadFile(page, {
+        folder: "projects",
+        name: "manual.pdf",
+        bytes: pdfBytes("second"),
+        replace: 1,
+      });
+      expect(response.status()).toBe(201);
+    } finally {
+      await context.close();
+    }
+
+    expect(await lockVersions()).toEqual([2, 2]);
   });
 
   test("read_file finds no deleted file, no file of another tab or folder and no malformed name", async ({

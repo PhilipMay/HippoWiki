@@ -308,6 +308,7 @@ test.describe("files", () => {
       lastChanged: diagram.updatedAt.toISOString(),
       lastEditedBy: owner.username,
       lastEditedVia: "web",
+      lockVersion: diagram.lockVersion,
     });
     expect(answer.files.find(({ name }) => name === "diagram-notes.pdf")).toMatchObject({
       wikiLink: "[[diagram-notes.pdf]]",

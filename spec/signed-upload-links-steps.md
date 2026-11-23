@@ -39,7 +39,7 @@ way, so that the app can show it in the pages it writes. The plan is written fro
 
 ## Checklist
 
-- [ ] Lock version of files in MCP
+- [x] Lock version of files in MCP
 - [ ] Token of an upload link
 - [ ] Upload link service
 - [ ] Upload address with a token
