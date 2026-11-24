@@ -36,6 +36,7 @@ const USER_TEXT_TOOLS = [
   "get_file_upload_link",
   "move_or_rename_file",
   "delete_page",
+  "delete_file",
   "rename_tab",
   "delete_tab",
 ];
@@ -63,6 +64,7 @@ const mocks = vi.hoisted(() => ({
   getCurrentFileVersion: vi.fn(),
   checkUploadName: vi.fn(),
   moveOrRenameFile: vi.fn(),
+  deleteFile: vi.fn(),
   getStore: vi.fn(),
   findLinkKey: vi.fn(),
   info: vi.fn(),
@@ -97,6 +99,7 @@ vi.mock("@/features/files/service", () => ({
   getCurrentFileVersion: mocks.getCurrentFileVersion,
   checkUploadName: mocks.checkUploadName,
   moveOrRenameFile: mocks.moveOrRenameFile,
+  deleteFile: mocks.deleteFile,
 }));
 // The links to files and the upload links are made by the real links services, with the key of the links from a
 // mocked database.
@@ -2341,7 +2344,7 @@ describe("the tools of a Manager connection", () => {
   };
   const TAB = { id: "tab-1", name: "guides", folder: FOLDER, role: "manager" };
   const NOT_ALLOWED = "Your role on the folder does not allow this change, so nothing was changed.";
-  const MANAGER_TOOLS = ["delete_page", "create_tab", "rename_tab", "delete_tab"];
+  const MANAGER_TOOLS = ["delete_page", "delete_file", "create_tab", "rename_tab", "delete_tab"];
 
   type ListedTool = {
     name: string;
@@ -2358,6 +2361,7 @@ describe("the tools of a Manager connection", () => {
   /** The calls of every service that a tool of a Manager connection writes with. */
   function expectNoManagerWrite(): void {
     expect(mocks.deletePage).not.toHaveBeenCalled();
+    expect(mocks.deleteFile).not.toHaveBeenCalled();
     expect(mocks.createTab).not.toHaveBeenCalled();
     expect(mocks.renameTab).not.toHaveBeenCalled();
     expect(mocks.deleteTab).not.toHaveBeenCalled();
@@ -2376,6 +2380,8 @@ describe("the tools of a Manager connection", () => {
     const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]));
     expect(Object.keys(byName.delete_page?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version"]);
     expect(byName.delete_page?.inputSchema.required).toEqual(["page"]);
+    expect(Object.keys(byName.delete_file?.inputSchema.properties ?? {})).toEqual(["tab", "file", "lockVersion"]);
+    expect(byName.delete_file?.inputSchema.required).toEqual(["file"]);
     expect(Object.keys(byName.create_tab?.inputSchema.properties ?? {})).toEqual(["name"]);
     expect(byName.create_tab?.inputSchema.required).toEqual(["name"]);
     expect(Object.keys(byName.rename_tab?.inputSchema.properties ?? {})).toEqual(["tab", "newName"]);
@@ -2393,13 +2399,16 @@ describe("the tools of a Manager connection", () => {
         expect(argument.description).toBeTruthy();
     }
     expect(byName.delete_page?.annotations.destructiveHint).toBe(true);
+    // Only the delete of a file destroys; its move keeps the hints of a tool that writes, as the tools of pages do.
+    expect(byName.delete_file?.annotations).toStrictEqual(byName.delete_page?.annotations);
+    expect(byName.move_or_rename_file?.annotations.destructiveHint).toBe(false);
     expect(byName.create_tab?.annotations.destructiveHint).toBe(false);
     expect(byName.rename_tab?.annotations.destructiveHint).toBe(false);
     expect(byName.delete_tab?.annotations.destructiveHint).toBe(true);
   });
 
   it.each([
-    ["Manager", 15, MANAGER],
+    ["Manager", 16, MANAGER],
     ["Writer", 11, WRITER],
     ["Reader", 5, READER],
   ])("give a %s connection %i tools", async (_role, count, other) => {
@@ -2425,7 +2434,7 @@ describe("the tools of a Manager connection", () => {
       "replace_page_content",
       "edit_page_content",
       "move_or_rename_page",
-      ...MANAGER_TOOLS,
+      ...MANAGER_TOOLS.filter((name) => name !== "delete_file"),
     ]) {
       expect(instructions).toContain(tool);
     }
@@ -2452,6 +2461,7 @@ describe("the tools of a Manager connection", () => {
     expect((await listedTools()).map((tool) => tool.name)).not.toContain("delete_page");
     for (const [name, args] of [
       ["delete_page", { page: "setup", version: 4 }],
+      ["delete_file", { file: "diagram.png", lockVersion: 3 }],
       ["create_tab", { name: "news" }],
       ["rename_tab", { tab: "guides", newName: "news" }],
       ["delete_tab", { tab: "guides" }],
@@ -2524,6 +2534,126 @@ describe("the tools of a Manager connection", () => {
       mocks.deletePage.mockResolvedValue({ ok: false, error });
 
       expect(errorOf(await callTool("delete_page", { tab: "guides", page: "setup", version: 4 }))).toContain(message);
+    });
+  });
+
+  describe("delete_file", () => {
+    const FILE = fileWithPlace("diagram.png", "guides");
+    const DELETE = { tab: "guides", file: "diagram.png", lockVersion: 3 };
+
+    beforeEach(() => {
+      mocks.getFile.mockResolvedValue(FILE);
+      mocks.deleteFile.mockResolvedValue({
+        ok: true,
+        value: {
+          folder: { name: "handbook" },
+          tab: { name: "guides" },
+          linkingPages: [
+            { id: "p1", name: "setup", title: "Setup", tab: { name: "guides" } },
+            { id: "p2", name: "overview", title: "Overview", tab: null },
+          ],
+        },
+      });
+    });
+
+    it("deletes the file found by its tab and name, based on the lock version, and names the pages that showed or linked it", async () => {
+      const result = await callTool("delete_file", DELETE);
+
+      expect(mocks.getFile).toHaveBeenCalledWith(MANAGER, "handbook", "guides", "diagram.png");
+      expect(mocks.deleteFile).toHaveBeenCalledExactlyOnceWith(MANAGER, "id-diagram.png", { lockVersion: 3 });
+      expect(result.isError).toBeFalsy();
+      expect(result.structuredContent).toEqual({
+        note: USER_TEXT_NOTE,
+        name: "diagram.png",
+        type: "png",
+        tab: "guides",
+        deletedItemsAddress: "https://wiki.example.com/deleted-items/handbook",
+        restore:
+          "The file can be restored with all its versions by a Manager or Owner of the folder in the browser, under " +
+          "Deleted items at the address deletedItemsAddress. Deleted items can be neither seen nor restored through " +
+          "this connection.",
+        shownOrLinkedFrom: [
+          { name: "setup", tab: "guides", title: "Setup" },
+          { name: "overview", tab: null, title: "Overview" },
+        ],
+      });
+      expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(result.structuredContent);
+    });
+
+    it("gives an empty list for a file that no page shows or links", async () => {
+      mocks.getFile.mockResolvedValue(fileWithPlace("manual.pdf", null));
+      mocks.deleteFile.mockResolvedValue({
+        ok: true,
+        value: { folder: { name: "handbook" }, tab: null, linkingPages: [] },
+      });
+
+      const result = await callTool("delete_file", { file: "manual.pdf", lockVersion: 3 });
+
+      expect(result.structuredContent).toMatchObject({
+        name: "manual.pdf",
+        type: "pdf",
+        tab: null,
+        shownOrLinkedFrom: [],
+      });
+    });
+
+    it("answers a file that does not exist or is deleted with a tool error that points to list_folder, and deletes nothing", async () => {
+      mocks.getFile.mockResolvedValue(null);
+
+      const message = errorOf(await callTool("delete_file", DELETE));
+
+      expect(message).toContain('There is no file named "diagram.png" in the tab "guides"');
+      expect(message).toContain("Use list_folder");
+      expect(mocks.deleteFile).not.toHaveBeenCalled();
+    });
+
+    it("passes no lock version on as null, which the service refuses as changed, and says that nothing was deleted", async () => {
+      mocks.deleteFile.mockResolvedValue({
+        ok: false,
+        error: { code: "file-changed", file: storedFileOf("network.png", null) },
+      });
+
+      const message = errorOf(await callTool("delete_file", { tab: "guides", file: "diagram.png" }));
+
+      expect(mocks.deleteFile).toHaveBeenCalledWith(MANAGER, "id-diagram.png", { lockVersion: null });
+      expect(message).toContain("The file was changed by bob via mcp at 2026-03-01T12:00:00.000Z");
+      expect(message).toContain("Nothing was deleted.");
+      expect(message).toContain('The file is now "network.png" directly in the folder "handbook"');
+      expect(message).toContain("base the delete on its current lockVersion");
+    });
+
+    it.each([
+      [{ code: "not-allowed" }, NOT_ALLOWED],
+      [{ code: "file-not-found" }, 'There is no file named "diagram.png" in the tab "guides"'],
+      [{ code: "failed" }, "The change could not be stored. Please try again later."],
+    ])("maps the error %j to a tool error", async (error, message) => {
+      mocks.deleteFile.mockResolvedValue({ ok: false, error });
+
+      expect(errorOf(await callTool("delete_file", DELETE))).toContain(message);
+    });
+
+    it("logs one line with the tab and the file name and the outcome", async () => {
+      await callTool("delete_file", DELETE);
+
+      expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          tool: "delete_file",
+          names: { tab: "guides", file: "diagram.png" },
+          outcome: "worked",
+        }),
+        "mcp tool called",
+      );
+    });
+
+    it("says in its description that pages still showing or linking the file show it as missing, and that the result lists them", async () => {
+      const description = (await listedTools()).find((tool) => tool.name === "delete_file")?.description ?? "";
+
+      expect(description).toContain("goes with all its versions to the deleted items of the folder");
+      expect(description).toContain("State the lockVersion that read_file or list_folder gave");
+      expect(description).toContain(
+        "A file that pages still show or link is deleted all the same, and those pages then show it as missing",
+      );
+      expect(description).toContain("the pages that showed or linked the file, so that they can be changed");
     });
   });
 
@@ -2691,6 +2821,7 @@ describe("the tools of each role", () => {
     ["get_file_upload_link", "editFile"],
     ["move_or_rename_file", "editFile"],
     ["delete_page", "deletePage"],
+    ["delete_file", "deleteFile"],
     ["create_tab", "editTab"],
     ["rename_tab", "editTab"],
     ["delete_tab", "deleteTab"],
@@ -2707,7 +2838,7 @@ describe("the tools of each role", () => {
   });
 
   it.each(MCP_ROLES)(
-    "of a %s connection include none that reverts a single file, and those that upload, move and rename one only where the role may",
+    "of a %s connection include none that reverts a single file, and those that upload, move, rename and delete one only where the role may",
     async (role) => {
       actor = { ...READER, connection: { ...READER.connection, role } };
 
@@ -2718,20 +2849,22 @@ describe("the tools of each role", () => {
       }[];
 
       // Two tools that take a file only read it, get_file_upload_link only adds a file or a version, and
-      // move_or_rename_file keeps its versions; none destroys anything.
+      // move_or_rename_file keeps its versions; only delete_file destroys.
       const writes = mayDo(role, "editFile") ? ["get_file_upload_link", "move_or_rename_file"] : [];
+      const deletes = mayDo(role, "deleteFile") ? ["delete_file"] : [];
       const withFile = tools.filter((tool) => Object.keys(tool.inputSchema.properties ?? {}).includes("file"));
-      expect(withFile.map((tool) => tool.name)).toEqual(["read_file", "get_file_download_link", ...writes]);
+      expect(withFile.map((tool) => tool.name)).toEqual(["read_file", "get_file_download_link", ...writes, ...deletes]);
       for (const tool of withFile) {
         expect(tool.annotations).toMatchObject({
-          readOnlyHint: !writes.includes(tool.name),
-          destructiveHint: false,
+          readOnlyHint: !writes.includes(tool.name) && !deletes.includes(tool.name),
+          destructiveHint: deletes.includes(tool.name),
         });
       }
       expect(tools.filter((tool) => /file|upload/u.test(tool.name)).map((tool) => tool.name)).toEqual([
         "read_file",
         "get_file_download_link",
         ...writes,
+        ...deletes,
       ]);
       expect(tools.map((tool) => tool.name).filter((name) => /revert/u.test(name))).toEqual([]);
     },
@@ -2886,7 +3019,7 @@ describe("the hint on the addresses", () => {
 
   it("ends the description of every address field of every tool of a Manager connection, after what it says of its item", async () => {
     const schemas = await outputSchemas();
-    expect(schemas.size).toBe(15);
+    expect(schemas.size).toBe(16);
 
     const addresses = [...schemas].flatMap(([tool, schema]) =>
       fieldsOf(schema)
@@ -2916,6 +3049,7 @@ describe("the hint on the addresses", () => {
       schemas.get("create_tab"),
       schemas.get("rename_tab"),
       schemas.get("delete_page"),
+      schemas.get("delete_file"),
       schemas.get("delete_tab"),
     ];
     for (const schema of withoutLinks) {
@@ -3124,7 +3258,7 @@ describe("every tool", () => {
   const UPLOAD_LINK_FAILED = "The upload link could not be made. Please try again later.";
 
   /**
-   * Each of the fifteen tools, called by a Manager connection, which has all of them: its arguments, the service it
+   * Each of the sixteen tools, called by a Manager connection, which has all of them: its arguments, the service it
    * calls, and the message of a failure of that service.
    */
   const TOOLS = [
@@ -3160,6 +3294,7 @@ describe("every tool", () => {
       WRITE_FAILED,
     ],
     ["delete_page", { page: "setup", version: 4 }, mocks.deletePage, WRITE_FAILED],
+    ["delete_file", { file: "diagram.png", lockVersion: 3 }, mocks.deleteFile, WRITE_FAILED],
     ["create_tab", { name: "news" }, mocks.createTab, WRITE_FAILED],
     ["rename_tab", { tab: "guides", newName: "news" }, mocks.renameTab, WRITE_FAILED],
     ["delete_tab", { tab: "guides" }, mocks.deleteTab, WRITE_FAILED],
@@ -3180,6 +3315,7 @@ describe("every tool", () => {
     get_file_upload_link: { file: "diagram.png" },
     move_or_rename_file: { file: "diagram.png", newTab: null, newName: "network.png" },
     delete_page: { page: "setup" },
+    delete_file: { file: "diagram.png" },
     create_tab: { name: "news" },
     rename_tab: { tab: "guides", newName: "news" },
     delete_tab: { tab: "guides" },
@@ -3215,6 +3351,10 @@ describe("every tool", () => {
       value: { ...STORED_FILE, name: "network.png", lockVersion: 4, updatedPages: [] },
     });
     mocks.deletePage.mockResolvedValue({ ok: true, value: { folder: { name: "handbook" }, tab: null } });
+    mocks.deleteFile.mockResolvedValue({
+      ok: true,
+      value: { folder: { name: "handbook" }, tab: null, linkingPages: [] },
+    });
     mocks.createTab.mockResolvedValue({ ok: true, value: { id: "t2", name: "news", folder: { name: "handbook" } } });
     mocks.renameTab.mockResolvedValue({
       ok: true,

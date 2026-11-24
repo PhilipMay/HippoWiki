@@ -524,7 +524,7 @@ test.describe("files", () => {
     }
   });
 
-  test("the tools of each role revert no single file, and only a Writer and a Manager connection upload, move and rename one", async ({
+  test("the tools of each role revert no single file, only a Writer and a Manager connection upload, move and rename one, and only a Manager connection deletes one", async ({
     request,
   }) => {
     for (const { role, token, address: to } of await connections()) {
@@ -534,7 +534,10 @@ test.describe("files", () => {
           result: { tools: { name: string; inputSchema: { properties?: Record<string, unknown> } }[] };
         }
       ).result;
-      const uploads = role === "reader" ? [] : ["get_file_upload_link", "move_or_rename_file"];
+      const uploads = [
+        ...(role === "reader" ? [] : ["get_file_upload_link", "move_or_rename_file"]),
+        ...(role === "manager" ? ["delete_file"] : []),
+      ];
 
       expect(
         tools.map(({ name }) => name).filter((name) => name.includes("file")),

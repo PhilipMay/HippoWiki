@@ -111,12 +111,13 @@ async function callEveryTool(): Promise<[string, Record<string, unknown>][]> {
   await record("read_file", { file: "manual.pdf" });
   await record("get_file_download_link", { tab: "guides", file: "diagram.png" });
   await record("get_file_upload_link", { tab: "guides", file: "screenshot.png", size: 100 });
-  await record("move_or_rename_file", {
+  const movedFile = await record("move_or_rename_file", {
     file: "scan.pdf",
     lockVersion: scan.lockVersion,
     newTab: "guides",
     newName: "network-manual.pdf",
   });
+  await record("delete_file", { tab: "guides", file: "network-manual.pdf", lockVersion: movedFile.lockVersion });
   await record("search_pages", { query: "install" });
   await record("search_pages", { query: "overview" });
   await record("search_pages", { query: "diagram" });

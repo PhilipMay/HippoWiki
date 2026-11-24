@@ -20,7 +20,9 @@ import * as folderService from "@/features/folders/service";
 import type {
   createPageInput,
   createTabInput,
+  deletedFileOutput,
   deletedPageOutput,
+  deleteFileInput,
   deletedTabOutput,
   deletePageInput,
   deleteTabInput,
@@ -1072,6 +1074,57 @@ export async function deletePage(
           return pageNotFound(options.folder.name, tab, input.page);
         case "page-changed":
           return pageChanged(options, deleted.error.page);
+        case "failed":
+          return toolError(WRITE_FAILED);
+      }
+    },
+    WRITE_FAILED,
+  );
+}
+
+/** What a delete of a file tells the agent about restoring: only a person in the browser restores deleted files. */
+const RESTORE_FILE =
+  "The file can be restored with all its versions by a Manager or Owner of the folder in the browser, under Deleted " +
+  "items at the address deletedItemsAddress. Deleted items can be neither seen nor restored through this connection.";
+
+/**
+ * The tool `delete_file`: a file of the folder of the connection by its tab, if it is in one, and its name with its
+ * extension, based on the lock version, deleted as in the browser: it goes with all its versions to the deleted items of
+ * the folder, from where a person can restore it. A file that pages show or link is deleted all the same; the result
+ * names those pages.
+ */
+export async function deleteFile(
+  options: WikiToolsOptions,
+  input: z.infer<typeof deleteFileInput>,
+): Promise<CallToolResult> {
+  return run(
+    options,
+    "delete_file",
+    input,
+    async () => {
+      const tab = input.tab ?? null;
+      const file = await fileService.getFile(options.actor, options.folder.name, tab, input.file);
+      if (!file) return fileNotFound(options.folder.name, tab, input.file);
+      const deleted = await fileService.deleteFile(options.actor, file.id, { lockVersion: input.lockVersion ?? null });
+      if (deleted.ok) {
+        return result(
+          withNote({
+            name: file.name,
+            type: file.type,
+            tab: deleted.value.tab?.name ?? null,
+            deletedItemsAddress: addressOf(options, deletedItemsPath(deleted.value.folder.name)),
+            restore: RESTORE_FILE,
+            shownOrLinkedFrom: updatedPagesData(deleted.value.linkingPages),
+          }) satisfies z.infer<typeof deletedFileOutput>,
+        );
+      }
+      switch (deleted.error.code) {
+        case "not-allowed":
+          return toolError(NOT_ALLOWED);
+        case "file-not-found":
+          return fileNotFound(options.folder.name, tab, input.file);
+        case "file-changed":
+          return fileChanged(options, deleted.error.file, { nothing: "Nothing was deleted.", base: "delete" });
         case "failed":
           return toolError(WRITE_FAILED);
       }

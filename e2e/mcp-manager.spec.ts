@@ -349,7 +349,7 @@ test.describe("the tools of a Manager connection", () => {
     expect(await stored()).toEqual(before);
   });
 
-  test("the tool list of a Manager connection has fifteen tools, the destructive hint on the content changes and the deletes and none for deleted pages, roles or the folder", async ({
+  test("the tool list of a Manager connection has sixteen tools, the destructive hint on the content changes and the deletes and none for deleted pages, roles or the folder", async ({
     request,
   }) => {
     const answer = await send(request, { method: "tools/list" }, manager, managerAddress);
@@ -379,29 +379,32 @@ test.describe("the tools of a Manager connection", () => {
       "get_file_upload_link",
       "move_or_rename_file",
       "delete_page",
+      "delete_file",
       "create_tab",
       "rename_tab",
       "delete_tab",
     ]);
     const hints = Object.fromEntries(tools.map(({ name, annotations }) => [name, annotations]));
-    for (const name of ["delete_page", "create_tab", "rename_tab", "delete_tab"]) {
+    for (const name of ["delete_page", "delete_file", "create_tab", "rename_tab", "delete_tab"]) {
       expect(hints[name]?.readOnlyHint, name).toBe(false);
     }
     expect(hints.replace_page_content?.destructiveHint).toBe(true);
     expect(hints.edit_page_content).toStrictEqual(hints.replace_page_content);
     expect(hints.delete_page?.destructiveHint).toBe(true);
+    expect(hints.delete_file).toStrictEqual(hints.delete_page);
     expect(hints.delete_tab?.destructiveHint).toBe(true);
     expect(hints.create_tab?.destructiveHint).toBe(false);
     expect(hints.rename_tab?.destructiveHint).toBe(false);
     expect(tools.map(({ name }) => name).join(" ")).not.toMatch(/restore|deleted|role|owner|folder_/);
     // No tool reverts a single file: read_file and get_file_download_link only read, get_file_upload_link adds a file
-    // or a version, which keeps the old ones, so it writes and destroys nothing, like create_page, and
-    // move_or_rename_file keeps the versions, like move_or_rename_page.
+    // or a version, which keeps the old ones, so it writes and destroys nothing, like create_page,
+    // move_or_rename_file keeps the versions, like move_or_rename_page, and only delete_file destroys.
     expect(tools.map(({ name }) => name).filter((name) => /file|upload/.test(name))).toEqual([
       "read_file",
       "get_file_download_link",
       "get_file_upload_link",
       "move_or_rename_file",
+      "delete_file",
     ]);
     expect(hints.move_or_rename_file).toStrictEqual(hints.move_or_rename_page);
     expect(hints.move_or_rename_file).toMatchObject({ readOnlyHint: false, destructiveHint: false });

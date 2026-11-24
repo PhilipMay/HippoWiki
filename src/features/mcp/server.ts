@@ -11,7 +11,9 @@ import {
   ADDRESS_HINT,
   createPageInput,
   createTabInput,
+  deletedFileOutput,
   deletedPageOutput,
+  deleteFileInput,
   deletedTabOutput,
   deletePageInput,
   deleteTabInput,
@@ -42,6 +44,7 @@ import {
 import {
   createPage,
   createTab,
+  deleteFile,
   deletePage,
   deleteTab,
   editPageContent,
@@ -394,6 +397,27 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
         annotations: WRITES_AND_DELETES,
       },
       (input) => deletePage(options, input),
+    );
+  }
+
+  if (mayDo(role, "deleteFile")) {
+    server.registerTool(
+      "delete_file",
+      {
+        title: "Delete a file",
+        description:
+          "Deletes a file (an image or a PDF) of the folder of this connection, as deleting it in the browser does: " +
+          "it goes with all its versions to the deleted items of the folder, where a Manager or Owner can restore it " +
+          "in the browser; deleted items cannot be seen or restored through this connection. State the lockVersion " +
+          "that read_file or list_folder gave: if the file has changed since, nothing is deleted. A file that pages " +
+          "still show or link is deleted all the same, and those pages then show it as missing; read_file names them " +
+          "beforehand. Returns the deleted file, the address of the deleted items of the folder and the pages that " +
+          `showed or linked the file, so that they can be changed. ${USER_TEXT_NOTE}`,
+        inputSchema: deleteFileInput,
+        outputSchema: deletedFileOutput,
+        annotations: WRITES_AND_DELETES,
+      },
+      (input) => deleteFile(options, input),
     );
   }
 

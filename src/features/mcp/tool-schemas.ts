@@ -252,6 +252,9 @@ export const moveOrRenamePageInput = z.object({
 
 export const deletePageInput = z.object(pageArguments);
 
+/** What `delete_file` takes: the file by its tab and name, and the lock version the delete is based on. */
+export const deleteFileInput = z.object({ ...readFileInput.shape, lockVersion: fileLockVersionArgument("delete") });
+
 export const createTabInput = z.object({ name: newTabNameArgument("The name of the new tab") });
 
 export const renameTabInput = z.object({
@@ -602,6 +605,31 @@ export const deletedPageOutput = z.object({
   tab: pageTabOutput("was"),
   deletedItemsAddress: DELETED_ITEMS_ADDRESS_OUTPUT,
   restore: z.string().describe("How the page can be restored"),
+});
+
+/**
+ * What `delete_file` returns: the deleted file, the tab it was in, where its deleted items are, how it is restored, and
+ * the pages of the folder that showed or linked it when it was deleted, which show it as missing now.
+ */
+export const deletedFileOutput = z.object({
+  note: NOTE_OUTPUT,
+  name: z.string().describe("The name the deleted file had, with its extension"),
+  type: fileOutput.shape.type,
+  tab: z.string().nullable().describe("The tab the file was in, or null for a file placed directly in the folder"),
+  deletedItemsAddress: DELETED_ITEMS_ADDRESS_OUTPUT,
+  restore: z.string().describe("How the file can be restored"),
+  shownOrLinkedFrom: z
+    .array(
+      z.object({
+        name: z.string().describe("The name of the page, as read_page takes it"),
+        tab: pageTabOutput("is"),
+        title: z.string(),
+      }),
+    )
+    .describe(
+      "The pages of the folder that showed the file with ![[…]] or linked it with [[…]] when it was deleted, sorted " +
+        "by title; they show it as missing now, so change them where needed",
+    ),
 });
 
 export const storedTabOutput = z.object({

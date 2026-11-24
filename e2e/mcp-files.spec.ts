@@ -1,6 +1,6 @@
 // The tools of MCP that move, rename and delete a single file: move_or_rename_file of a Writer and a Manager
-// connection, with the update of the links and embeds of the file, optimistic locking and what the browser shows of the
-// change. The tools that read files are in `mcp-read.spec.ts`, the upload links in `file-upload-links.spec.ts`.
+// connection, with the update of the links and embeds of the file, and delete_file of a Manager connection, with the
+// pages that showed or linked the file; both with optimistic locking and what the browser shows of the change. The tools that read files are in `mcp-read.spec.ts`, the upload links in `file-upload-links.spec.ts`.
 import type { APIRequestContext } from "@playwright/test";
 
 import { USER_TEXT_NOTE } from "@/features/mcp/tool-schemas";
@@ -9,6 +9,7 @@ import { logIn, NO_STORAGE_STATE } from "./support/auth";
 import { createFile, createGrant, createPage, createTab, getTestDb } from "./support/database";
 import { pngBytes, uploadFile } from "./support/files";
 import { call, mcpPath, send, setUpProjects, type ToolResult } from "./support/mcp";
+import { ISSUER } from "./support/oauth";
 import { expect, test } from "./support/test";
 
 // An MCP client has no session cookie: it only has the access token of its grant.
@@ -255,5 +256,181 @@ test.describe("move_or_rename_file", () => {
     await page.goto("/folders/projects/network.png");
     const lastChange = page.getByRole("table", { name: "Details" }).getByRole("row", { name: /Last change/ });
     await expect(lastChange.getByRole("cell")).toHaveText(new RegExp(` by ${owner.name} via mcp$`));
+  });
+});
+
+test.describe("delete_file", () => {
+  test("deletes guides/setup.png, which the page guides/setup shows, names that page, and the file is gone everywhere", async ({
+    page,
+    request,
+  }) => {
+    const guides = await createTab({ folder: projects, name: "guides" });
+    const file = await createFile({ tab: guides, name: "setup.png", editor: owner });
+    await createPage({ tab: guides, name: "setup", content: "# Setup\n\n![[guides/setup.png]]", editor: owner });
+
+    const deleted = await manage(request, "delete_file", {
+      tab: "guides",
+      file: "setup.png",
+      lockVersion: file.lockVersion,
+    });
+
+    expect(deleted.isError).toBeFalsy();
+    expect(deleted.structuredContent).toEqual({
+      note: USER_TEXT_NOTE,
+      name: "setup.png",
+      type: "png",
+      tab: "guides",
+      deletedItemsAddress: `${ISSUER}/deleted-items/projects`,
+      restore: expect.stringMatching(
+        /restored with all its versions by a Manager or Owner of the folder in the browser/,
+      ),
+      shownOrLinkedFrom: [{ name: "setup", tab: "guides", title: "Setup" }],
+    });
+    const listed = (await manage(request, "list_folder", {})).structuredContent as { files: unknown[] };
+    expect(listed.files).toEqual([]);
+    expect(errorOf(await manage(request, "read_file", { tab: "guides", file: "setup.png" }))).toContain(
+      "Use list_folder to see the files of the folder",
+    );
+    const searched = (await manage(request, "search_pages", { query: "setup" })).structuredContent as {
+      files: unknown[];
+    };
+    expect(searched.files).toEqual([]);
+    expect(await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } })).toMatchObject({
+      deletedAt: expect.any(Date),
+      lastEditedById: owner.id,
+      lastEditedVia: "mcp",
+    });
+
+    await logIn(page, owner.name);
+    await expect(page).toHaveURL("/folders");
+    await page.goto("/folders/projects/guides/setup.md");
+    await expect(page.getByRole("article").getByText("guides/setup.png")).toHaveAccessibleDescription(
+      "File does not exist",
+    );
+    await expect(page.getByRole("article").getByRole("img")).toHaveCount(0);
+  });
+
+  test("deleting a file that no page uses gives an empty list", async ({ request }) => {
+    const file = await createFile({ folder: projects, name: "manual.pdf", editor: owner });
+    await createPage({ folder: projects, name: "plan", content: "# Plan\n\n[[other.pdf]]", editor: owner });
+
+    const deleted = await manage(request, "delete_file", { file: "manual.pdf", lockVersion: file.lockVersion });
+
+    expect(deleted.structuredContent).toMatchObject({
+      name: "manual.pdf",
+      type: "pdf",
+      tab: null,
+      shownOrLinkedFrom: [],
+    });
+  });
+
+  test("refuses a delete based on the lock version before a rename in the browser, and an unknown or deleted file", async ({
+    page,
+    request,
+  }) => {
+    const file = await createFile({ folder: projects, name: "setup.png", editor: owner });
+    await createFile({ folder: projects, name: "old.png", editor: owner, deletedAt: new Date() });
+    await logIn(page, owner.name);
+    await expect(page).toHaveURL("/folders");
+    await page.goto("/folders/projects/setup.png?action=move-or-rename");
+    const dialog = page.getByRole("dialog", { name: "Move or rename file" });
+    await dialog.getByLabel("Name").fill("network.png");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(page).toHaveURL("/folders/projects/network.png");
+    const before = await storedFiles();
+
+    const changed = errorOf(
+      await manage(request, "delete_file", { file: "network.png", lockVersion: file.lockVersion }),
+    );
+    expect(changed).toContain(`The file was changed by ${owner.name} via web at`);
+    expect(changed).toContain("Nothing was deleted.");
+    for (const name of ["setup.png", "old.png", "missing.png"]) {
+      expect(errorOf(await manage(request, "delete_file", { file: name, lockVersion: 1 })), name).toContain(
+        "Use list_folder to see the files of the folder",
+      );
+    }
+
+    expect(await storedFiles()).toEqual(before);
+    expect(before).toContainEqual(expect.objectContaining({ name: "network.png", deletedAt: null }));
+  });
+
+  test("changes nothing after the user's role was lowered to Writer, and at the Writer and the Reader address", async ({
+    request,
+  }) => {
+    const file = await createFile({ folder: projects, name: "setup.png", editor: owner });
+    const before = await storedFiles();
+    const args = { file: "setup.png", lockVersion: file.lockVersion };
+
+    await getTestDb().folderRole.updateMany({
+      where: { folderId: projects.id, userId: owner.id },
+      data: { role: "writer" },
+    });
+    // The Manager address of a user who is a Writer now answers 403 and runs no tool; a role lowered between the
+    // request and the delete is the tool error of the role, which tools.test.ts shows.
+    const lowered = await send(
+      request,
+      { method: "tools/call", params: { name: "delete_file", arguments: args } },
+      manager,
+      mcpPath(projects, "manager"),
+    );
+    expect(lowered.status()).toBe(403);
+    expect(await storedFiles()).toEqual(before);
+    await getTestDb().folderRole.updateMany({
+      where: { folderId: projects.id, userId: owner.id },
+      data: { role: "owner" },
+    });
+    for (const [token, to] of [
+      [writer, mcpPath(projects, "writer")],
+      [reader, readerAddress],
+    ] as const) {
+      const answer = await send(
+        request,
+        { method: "tools/call", params: { name: "delete_file", arguments: args } },
+        token,
+        to,
+      );
+      expect(await answer.json(), to).toMatchObject({ error: { code: -32602, message: "Tool delete_file not found" } });
+    }
+
+    expect(await storedFiles()).toEqual(before);
+  });
+
+  test("the deleted file is listed under Deleted items by the user via mcp, and a Manager restores it with all its versions", async ({
+    page,
+    request,
+  }) => {
+    const guides = await createTab({ folder: projects, name: "guides" });
+    const file = await createFile({ tab: guides, name: "setup.png", versions: [{}, {}] });
+
+    const deleted = await manage(request, "delete_file", {
+      tab: "guides",
+      file: "setup.png",
+      lockVersion: file.lockVersion,
+    });
+    expect(deleted.isError).toBeFalsy();
+
+    await logIn(page, owner.name);
+    await expect(page).toHaveURL("/folders");
+    await page.goto("/deleted-items/projects");
+    const rows = page
+      .getByRole("table", { name: "Deleted items" })
+      .getByRole("row")
+      .filter({ has: page.getByRole("cell") });
+    await expect(rows).toHaveCount(1);
+    await expect(rows.nth(0).getByRole("cell").nth(0)).toHaveText("setup.png");
+    await expect(rows.nth(0).getByRole("cell").nth(4)).toHaveText(owner.name);
+    await expect(rows.nth(0).getByRole("cell").nth(5)).toHaveText("mcp");
+
+    await page.goto(`/deleted-items/projects/${file.id}?action=restore`);
+    const dialog = page.getByRole("dialog", { name: "Restore file" });
+    await expect(dialog.getByLabel("Name")).toHaveValue("setup.png");
+    await dialog.getByRole("radio", { name: "Tab guides" }).check();
+    await dialog.getByRole("button", { name: "Save" }).click();
+
+    await expect(page).toHaveURL("/folders/projects/guides/setup.png");
+    await expect(page.getByRole("table", { name: "Versions" }).getByRole("link", { name: /^Version/ })).toHaveText([
+      "Version 2",
+      "Version 1",
+    ]);
   });
 });

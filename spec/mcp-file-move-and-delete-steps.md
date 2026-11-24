@@ -22,7 +22,7 @@ does in the browser: a Writer and a Manager connection with `move_or_rename_file
 
 - [x] File services for MCP actors
 - [x] Tool `move_or_rename_file`
-- [ ] Tool `delete_file`
+- [x] Tool `delete_file`
 - [ ] Instructions and descriptions
 - [ ] Spec tests
 - [ ] Wrap-up
