@@ -20,7 +20,7 @@ does in the browser: a Writer and a Manager connection with `move_or_rename_file
 
 ## Checklist
 
-- [ ] File services for MCP actors
+- [x] File services for MCP actors
 - [ ] Tool `move_or_rename_file`
 - [ ] Tool `delete_file`
 - [ ] Instructions and descriptions

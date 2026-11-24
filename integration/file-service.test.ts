@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { inBrowser, type BrowserActor } from "@/features/folder-roles/actors";
 import * as fileService from "@/features/files/service";
+import type { StoreState } from "@/features/files/store";
 import * as pageService from "@/features/pages/service";
 import type { User } from "@/generated/prisma/client";
 
@@ -22,7 +23,7 @@ import {
 } from "../e2e/support/database";
 import { PHOTO_CAMERA, pdfBytes, phonePhoto, pngBytes } from "../e2e/support/files";
 import { KNOWN_USER } from "../prisma/known-users";
-import { createBob, NOT_ALLOWED, revisionsOf, storedPage } from "./helpers";
+import { createBob, mcpActorOf, NOT_ALLOWED, revisionsOf, storedPage } from "./helpers";
 
 /** The user who makes the writes, the known user `alice`, Owner of every folder a test creates without roles. */
 let user: User;
@@ -485,7 +486,7 @@ describe("deleting and restoring a file", () => {
 
     await expect(fileService.deleteFile(actor, file.id, { lockVersion: file.lockVersion })).resolves.toEqual({
       ok: true,
-      value: { folder: { name: folder.name }, tab: { name: "guides" } },
+      value: { folder: { name: folder.name }, tab: { name: "guides" }, linkingPages: [] },
     });
     expect(await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } })).toMatchObject({
       tabId: null,
@@ -552,6 +553,170 @@ describe("deleting and restoring a file", () => {
       "older.png",
     ]);
     await expect(fileService.listDeletedFiles(inBrowser(bob), folder.id)).resolves.toBeNull();
+  });
+});
+
+describe("moving, renaming and deleting a file through MCP", () => {
+  /** A folder of alice and bob, with bob in the given role, its tab guides and the file guides/diagram.png. */
+  async function folderOfBob(role: "reader" | "writer" | "manager") {
+    const bob = await createBob();
+    const folder = await createFolder({
+      roles: [
+        { user, role: "owner" },
+        { user: bob, role },
+      ],
+    });
+    const guides = await createTab({ folder, name: "guides" });
+    const file = await createFile({ tab: guides, name: "diagram.png", versions: [{}, {}] });
+    return { bob, folder, guides, file };
+  }
+
+  /** Uses a store whose files directory is not set, as a server with the files off, until the end of `run`. */
+  async function withFilesOff<T>(run: () => Promise<T>): Promise<T> {
+    const global = globalThis as { hippowikiFileStore?: Promise<StoreState> };
+    const before = global.hippowikiFileStore;
+    global.hippowikiFileStore = Promise.resolve({ on: false, reason: "not-set", dir: null });
+    try {
+      return await run();
+    } finally {
+      global.hippowikiFileStore = before;
+    }
+  }
+
+  it("moves and renames a file on a Writer connection, with the user via mcp as last editor, and updates the links and embeds", async () => {
+    const { bob, folder, file } = await folderOfBob("writer");
+    const setup = await createPage({
+      folder,
+      name: "setup",
+      content: "# Setup\n\n![[guides/diagram.png]] [[guides/diagram.png|label]]",
+    });
+
+    const result = await fileService.moveOrRenameFile(mcpActorOf(bob, folder, "writer"), file.id, {
+      name: "network.png",
+      tabId: null,
+      lockVersion: file.lockVersion,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        name: "network.png",
+        tab: null,
+        lockVersion: file.lockVersion + 1,
+        lastEditedBy: { name: "bob", via: "mcp" },
+        updatedPages: [{ id: setup.id, name: "setup", title: "Setup", tab: null }],
+      },
+    });
+    expect(await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } })).toMatchObject({
+      name: "network.png",
+      tabId: null,
+      lastEditedById: bob.id,
+      lastEditedVia: "mcp",
+    });
+    expect((await storedPage(setup.id)).content).toBe("# Setup\n\n![[network.png]] [[network.png|label]]");
+    expect((await revisionsOf(setup.id)).at(-1)).toMatchObject({ userId: bob.id, via: "mcp", linksUpdated: true });
+  });
+
+  it("refuses a move on a Reader connection, and on a Writer connection of a user who is now a Reader", async () => {
+    const { bob, folder, file } = await folderOfBob("reader");
+    const stored = await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } });
+    const input = { name: "network.png", tabId: null, lockVersion: file.lockVersion };
+
+    await expect(fileService.moveOrRenameFile(mcpActorOf(user, folder, "reader"), file.id, input)).resolves.toEqual(
+      NOT_ALLOWED,
+    );
+    await expect(fileService.moveOrRenameFile(mcpActorOf(bob, folder, "writer"), file.id, input)).resolves.toEqual(
+      NOT_ALLOWED,
+    );
+
+    expect(await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } })).toEqual(stored);
+  });
+
+  it("deletes a file on a Manager connection with its versions, with the user via mcp as last editor, and frees its name", async () => {
+    const { bob, folder, guides, file } = await folderOfBob("manager");
+
+    await expect(
+      fileService.deleteFile(mcpActorOf(bob, folder, "manager"), file.id, { lockVersion: file.lockVersion }),
+    ).resolves.toEqual({
+      ok: true,
+      value: { folder: { name: folder.name }, tab: { name: "guides" }, linkingPages: [] },
+    });
+
+    expect(await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } })).toMatchObject({
+      deletedAt: expect.any(Date),
+      lastEditedById: bob.id,
+      lastEditedVia: "mcp",
+    });
+    expect(await getTestDb().fileVersion.count({ where: { fileId: file.id } })).toBe(2);
+    await expect(createFile({ tab: guides, name: "diagram.png" })).resolves.toMatchObject({ deletedAt: null });
+  });
+
+  it("refuses a delete on a Writer connection, and on a Manager connection of a user who is now a Writer", async () => {
+    const { bob, folder, file } = await folderOfBob("writer");
+    const input = { lockVersion: file.lockVersion };
+
+    await expect(fileService.deleteFile(mcpActorOf(user, folder, "writer"), file.id, input)).resolves.toEqual(
+      NOT_ALLOWED,
+    );
+    await expect(fileService.deleteFile(mcpActorOf(bob, folder, "manager"), file.id, input)).resolves.toEqual(
+      NOT_ALLOWED,
+    );
+
+    expect(await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } })).toMatchObject({ deletedAt: null });
+  });
+
+  it("returns the pages that show or link the deleted file, each once, without deleted pages and pages of other folders", async () => {
+    const folder = await createFolder();
+    const guides = await createTab({ folder, name: "guides" });
+    const file = await createFile({ tab: guides, name: "diagram.png" });
+    const unused = await createFile({ folder, name: "unused.pdf" });
+    const shows = await createPage({ folder, name: "shows", content: "# Shows\n\n![[guides/diagram.png]]" });
+    const both = await createPage({
+      tab: guides,
+      name: "both",
+      content: "# Both\n\n![[guides/diagram.png]] and [[guides/diagram.png|the diagram]]",
+    });
+    const links = await createPage({ folder, name: "links", content: "# Links\n\n[[guides/diagram.png]]" });
+    await createPage({ folder, content: "# Gone\n\n![[guides/diagram.png]]", deletedAt: new Date() });
+    const other = await createFolder();
+    await createTab({ folder: other, name: "guides" });
+    await createPage({ folder: other, content: "# Elsewhere\n\n![[guides/diagram.png]]" });
+    const manager = mcpActorOf(user, folder, "manager");
+
+    const deleted = await fileService.deleteFile(manager, file.id, { lockVersion: file.lockVersion });
+
+    expect(deleted.ok && deleted.value.linkingPages).toEqual([
+      { id: both.id, name: "both", title: "Both", tab: { name: "guides" } },
+      { id: links.id, name: "links", title: "Links", tab: null },
+      { id: shows.id, name: "shows", title: "Shows", tab: null },
+    ]);
+    await expect(
+      fileService.deleteFile(manager, unused.id, { lockVersion: unused.lockVersion }),
+    ).resolves.toMatchObject({ ok: true, value: { tab: null, linkingPages: [] } });
+  });
+
+  it("moves and deletes a file through MCP while the files are off", async () => {
+    const folder = await createFolder();
+    const file = await createFile({ folder, name: "diagram.png" });
+    const manager = mcpActorOf(user, folder, "manager");
+
+    await withFilesOff(async () => {
+      const moved = await fileService.moveOrRenameFile(manager, file.id, {
+        name: "network.png",
+        tabId: null,
+        lockVersion: file.lockVersion,
+      });
+      expect(moved).toMatchObject({ ok: true, value: { name: "network.png" } });
+      if (!moved.ok) return;
+      await expect(
+        fileService.deleteFile(manager, file.id, { lockVersion: moved.value.lockVersion }),
+      ).resolves.toMatchObject({ ok: true });
+    });
+
+    expect(await getTestDb().file.findUniqueOrThrow({ where: { id: file.id } })).toMatchObject({
+      name: "network.png",
+      deletedAt: expect.any(Date),
+    });
   });
 });
 

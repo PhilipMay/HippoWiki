@@ -58,7 +58,13 @@ import {
 } from "@/features/files/store";
 import { detectType, isImageType, typeOfExtension, type FileType } from "@/features/files/types";
 import { softDeleteFileData } from "@/features/files/writes";
-import { LINKS_TRANSACTION, lockFolderLinks, updateLinks, type LinkingPage } from "@/features/pages/links-service";
+import {
+  LINKS_TRANSACTION,
+  lockFolderLinks,
+  pagesLinkingToFile,
+  updateLinks,
+  type LinkingPage,
+} from "@/features/pages/links-service";
 import { pageMoved } from "@/features/pages/wiki-links";
 import { LAST_EDITOR_SELECT, withLastEditor, type LastEditor } from "@/features/users/records";
 import type { ChangeChannel, Prisma } from "@/generated/prisma/client";
@@ -983,10 +989,11 @@ type FileMoveWrite =
  * nothing and is logged apart. A stored move counts the lock version up, makes the actor the last editor and updates
  * every link and embed of the file in the pages of the folder that are not deleted, in one transaction that holds the
  * exclusive lock of the links of the folder (`lockFolderLinks()`), each updated page with a revision marked as links
- * updated; a move that is refused or fails changes no page. Only the browser moves files.
+ * updated; a move that is refused or fails changes no page. The browser and MCP call it; it reads no content, so it
+ * works while the files are off.
  */
 export async function moveOrRenameFile(
-  actor: BrowserActor,
+  actor: ContentActor,
   id: string,
   input: { name: string; tabId: string | null; lockVersion: number | null },
 ): Promise<Result<MovedFile, MoveOrRenameFileError>> {
@@ -1111,23 +1118,31 @@ async function storeFileMove(
 
 export type DeleteFileError = NotAllowed | FileNotFound | FileChanged | Failed;
 
-/** Where a deleted file was: the names of its folder and tab, the address to go to after the delete. */
-export type FilePlaceNames = { folder: { name: string }; tab: { name: string } | null };
+/**
+ * Where a deleted file was, the names of its folder and tab, which the browser goes to after the delete, and the pages
+ * of the folder that showed or linked it when it was deleted, which MCP names.
+ */
+export type DeletedFilePlace = {
+  folder: { name: string };
+  tab: { name: string } | null;
+  linkingPages: LinkingPage[];
+};
 
 /**
  * Deletes the file with the given id as a soft delete, based on the lock version that the dialog was opened with, and
- * returns the place it was in. The file keeps its row, its folder and its versions, so it can be restored; it gets the
- * time of deletion, loses its tab, because its place inside the folder is forgotten, and the actor becomes its last
- * editor (`softDeleteFileData()`). Its name is free at once. A file that is already deleted counts as missing. The
- * delete is refused with `file-changed` when the file was changed after that lock version. Only the browser deletes a
- * single file; a delete of a tab deletes the files of the tab with it, also through MCP (`deleteTab()` of the folders
- * service).
+ * returns the place it was in with the pages of the folder that are not deleted and showed or linked it then. The file
+ * keeps its row, its folder and its versions, so it can be restored; it gets the time of deletion, loses its tab,
+ * because its place inside the folder is forgotten, and the actor becomes its last editor (`softDeleteFileData()`).
+ * Its name is free at once, and the pages that show or link it show it as missing. A file that is already deleted
+ * counts as missing. The delete is refused with `file-changed` when the file was changed after that lock version. The
+ * browser and MCP call it; it reads no content, so it works while the files are off. A delete of a tab deletes the
+ * files of the tab with it (`deleteTab()` of the folders service).
  */
 export async function deleteFile(
-  actor: BrowserActor,
+  actor: ContentActor,
   id: string,
   input: { lockVersion: number | null },
-): Promise<Result<FilePlaceNames, DeleteFileError>> {
+): Promise<Result<DeletedFilePlace, DeleteFileError>> {
   const opened = openContentWrite(actor, "file not deleted");
   if (opened.refused) return opened.refused;
 
@@ -1142,20 +1157,28 @@ export async function deleteFile(
   const lockVersion = parseLockVersion(input.lockVersion);
   if (lockVersion === null) return refusedFileWrite(fileId, input.lockVersion, "file to delete");
 
-  let place: FilePlaceNames | null;
+  let place: DeletedFilePlace | null;
   try {
-    // The read of the place and the update in one transaction: the lock version in the condition of the update makes
-    // the place the one the file had when it was deleted, because a move in between counts the lock version up.
+    // The reads and the update in one transaction: the lock version in the condition of the update makes the place the
+    // one the file had when it was deleted, because a move in between counts the lock version up. The exclusive lock of
+    // the links of the folder, as a move takes it, makes the pages hold every link stored before the delete: no save
+    // adds one in between.
     place = await getDb().$transaction(async (tx) => {
       const where = { id: fileId, lockVersion, deletedAt: null };
-      const file = await tx.file.findFirst({
-        where,
-        select: { folder: { select: { name: true } }, tab: { select: { name: true } } },
-      });
+      const select = {
+        folderId: true,
+        name: true,
+        folder: { select: { name: true } },
+        tab: { select: { name: true } },
+      };
+      const file = await tx.file.findFirst({ where, select });
       if (!file) return null;
+      // A move that stores before the lock counts the lock version up, so the update below matches no row then.
+      await lockFolderLinks(tx, file.folderId, "exclusive");
+      const linkingPages = await pagesLinkingToFile(tx, file);
       const { count } = await tx.file.updateMany({ where, data: softDeleteFileData(opened.editor) });
-      return count === 0 ? null : file;
-    });
+      return count === 0 ? null : { folder: file.folder, tab: file.tab, linkingPages };
+    }, LINKS_TRANSACTION);
   } catch (err) {
     if (isForeignKeyViolation(err, LAST_EDITOR)) return unknownActor(err, actor);
     logger.error({ err, fileId }, "failed to delete file");
@@ -1163,7 +1186,7 @@ export async function deleteFile(
   }
   if (place === null) return refusedFileWrite(fileId, lockVersion, "file to delete");
 
-  logger.info({ fileId, ...channelOf(actor) }, "file deleted");
+  logger.info({ fileId, linkingPages: place.linkingPages.length, ...channelOf(actor) }, "file deleted");
   return { ok: true, value: place };
 }
 

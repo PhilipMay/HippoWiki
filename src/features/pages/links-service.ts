@@ -112,7 +112,19 @@ export async function listPagesLinkingToFile(actor: ContentActor, fileId: string
     select: { folderId: true, name: true, tab: { select: { name: true } } },
   });
   if (!file) return null;
-  const links = await getDb().pageLink.findMany({
+  return pagesLinkingToFile(getDb(), file);
+}
+
+/**
+ * The pages of the folder that are not deleted and show or link a file of the given name and place, sorted by title and
+ * then by name, each once (a page has at most one row per target): the query of `listPagesLinkingToFile()` and of the
+ * delete of a file, which reads it in its transaction. It checks no role.
+ */
+export async function pagesLinkingToFile(
+  db: Prisma.TransactionClient,
+  file: { folderId: string; name: string; tab: { name: string } | null },
+): Promise<LinkingPage[]> {
+  const links = await db.pageLink.findMany({
     where: { folderId: file.folderId, tabName: file.tab?.name ?? null, pageName: file.name, page: { deletedAt: null } },
     select: { page: { select: { id: true, name: true, title: true, tab: { select: { name: true } } } } },
     orderBy: [{ page: { title: "asc" } }, { page: { name: "asc" } }],

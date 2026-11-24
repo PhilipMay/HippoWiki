@@ -773,13 +773,31 @@ describe("deleteFile", () => {
 
   const remove = (lockVersion: number | null = 3) => fileService.deleteFile(ACTOR, FILE_ID, { lockVersion });
 
-  it("soft deletes the file based on its lock version, returns its place and logs it", async () => {
-    mocks.txFileFindFirst.mockResolvedValue({ folder: { name: "handbook" }, tab: { name: "guides" } });
+  it("soft deletes the file based on its lock version under the exclusive lock of the links, returns its place and the pages that show or link it, and logs it", async () => {
+    mocks.txFileFindFirst.mockResolvedValue({
+      folderId: FOLDER_ID,
+      name: "diagram.png",
+      folder: { name: "handbook" },
+      tab: { name: "guides" },
+    });
+    const page = { id: "page-id", name: "setup", title: "Setup", tab: null };
+    mocks.linkFindMany.mockResolvedValue([{ page }]);
 
     await expect(remove()).resolves.toEqual({
       ok: true,
-      value: { folder: { name: "handbook" }, tab: { name: "guides" } },
+      value: { folder: { name: "handbook" }, tab: { name: "guides" }, linkingPages: [page] },
     });
+    expect(String(mocks.executeRaw.mock.calls[0]?.[0])).toContain("pg_advisory_xact_lock(");
+    expect(mocks.linkFindMany.mock.calls[0]?.[0]).toMatchObject({
+      where: { folderId: FOLDER_ID, tabName: "guides", pageName: "diagram.png", page: { deletedAt: null } },
+    });
+    // The pages are read before the update, under the lock.
+    expect(mocks.linkFindMany.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mocks.executeRaw.mock.invocationCallOrder[0] ?? Infinity,
+    );
+    expect(mocks.linkFindMany.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.fileUpdateMany.mock.invocationCallOrder[0] ?? -Infinity,
+    );
     expect(mocks.fileUpdateMany.mock.calls[0]?.[0]).toEqual({
       where: { id: FILE_ID, lockVersion: 3, deletedAt: null },
       data: {
@@ -790,7 +808,7 @@ describe("deleteFile", () => {
         lockVersion: { increment: 1 },
       },
     });
-    expect(mocks.info).toHaveBeenCalledWith({ fileId: FILE_ID, channel: "web" }, "file deleted");
+    expect(mocks.info).toHaveBeenCalledWith({ fileId: FILE_ID, linkingPages: 1, channel: "web" }, "file deleted");
   });
 
   it("refuses a delete based on an older lock version, or on none, with the file as it is now", async () => {
