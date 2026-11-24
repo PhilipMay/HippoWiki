@@ -1,5 +1,5 @@
-// Tests of the MCP tools move_or_rename_file and delete_file written from the requirements alone
-// (spec/mcp-file-move-and-delete-requirements.md, R1 to R17), against the real services, the MCP server and the test
+// Tests of the MCP tools move_or_rename_file and delete_file written from the spec alone (spec/mcp.md, "Tools", and
+// the specs it points to), against the real services, the MCP server and the test
 // database. What src/features/mcp/tools.test.ts, integration/file-service.test.ts and e2e/mcp-files.spec.ts already
 // check is not checked again here.
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
@@ -131,7 +131,7 @@ async function whileRefused<T>(table: string, writes: string, run: () => Promise
 }
 
 describe("move_or_rename_file", () => {
-  // mcp-file-move-and-delete-requirements.md, R3: the new name keeps the extension of the file's type, for every type
+  // mcp.md, "Tools", `move_or_rename_file`: the new name keeps the extension of the file's type, for every type
   // and not only for a PNG.
   it("refuses a JPEG renamed to .jpeg and a PDF renamed to .png with an error that names the extension of its type, and changes nothing", async () => {
     const photo = await createFile({ folder: handbook, name: "photo.jpg", editor: alice });
@@ -160,7 +160,7 @@ describe("move_or_rename_file", () => {
     expect(await storedFiles()).toEqual(before);
   });
 
-  // mcp-file-move-and-delete-requirements.md, R4: a move based on another lock version than the file's is refused, a
+  // optimistic-locking.md, "Callers other than the browser": a move based on another lock version than the file's is refused, a
   // higher one and none as well as an older one; optimistic-locking.md, "Files": "based on another lock version, or on
   // none".
   it("refuses a move based on a lock version higher than the file's, or on none, and the file keeps its name and place", async () => {
@@ -181,7 +181,7 @@ describe("move_or_rename_file", () => {
     expect(await storedFiles()).toEqual(before);
   });
 
-  // mcp-file-move-and-delete-requirements.md, R5 and wiki-links.md, "Updates on a move or rename": a move out of a tab
+  // mcp.md, "Tools", `move_or_rename_file`, and wiki-links.md, "Updates on a move or rename": a move out of a tab
   // directly into the folder changes every link and embed of the file in the pages of the folder, keeps the labels,
   // counts up the version of each changed page, and changes neither deleted pages nor the pages of another folder.
   it("changes the links and embeds of a file moved out of a tab in the pages of its folder only, keeps their labels and counts up their versions", async () => {
@@ -229,7 +229,7 @@ describe("move_or_rename_file", () => {
     }
   });
 
-  // mcp-file-move-and-delete-requirements.md, R6: a move to the current name and place changes nothing, so the file
+  // mcp.md, "Tools", `move_or_rename_file`: a move to the current name and place changes nothing, so the file
   // keeps its last editor, its channel and the time of its last change as well.
   it("changes not even the last editor and the last change of a file moved to its current name and place", async () => {
     const guides = await createTab({ folder: handbook, name: "guides", editor: alice });
@@ -255,7 +255,7 @@ describe("move_or_rename_file", () => {
     expect(await storedFiles()).toEqual(before);
   });
 
-  // mcp-file-move-and-delete-requirements.md, R7: the result gives the file as stored, the links of a PDF included,
+  // mcp.md, "Tools", `move_or_rename_file`: the result gives the file as stored, the links of a PDF included,
   // which has no embed link; read_file gives the same afterwards.
   it("returns a moved PDF as read_file gives it afterwards, with its wiki link, no embed link and a lock version one higher", async () => {
     await createTab({ folder: handbook, name: "guides", editor: alice });
@@ -290,7 +290,7 @@ describe("move_or_rename_file", () => {
 });
 
 describe("delete_file", () => {
-  // mcp-file-move-and-delete-requirements.md, R8: the name of a deleted file is free at once, also for a move through
+  // page-deletion.md, "Deleting a file": the name of a deleted file is free at once, also for a move through
   // MCP into its place.
   it("frees the name of the deleted file at once, so that another file can be moved to it", async () => {
     const guides = await createTab({ folder: handbook, name: "guides", editor: alice });
@@ -317,7 +317,7 @@ describe("delete_file", () => {
     expect(moved).toMatchObject({ name: "diagram.png", tab: "guides", wikiLink: "[[guides/diagram.png]]" });
   });
 
-  // mcp-file-move-and-delete-requirements.md, R14: the pages that showed or linked the file are listed so that the
+  // mcp.md, "Tools", `delete_file`: the pages that showed or linked the file are listed so that the
   // agent can change them; the delete itself changes none of them, they show the file as missing.
   it("changes no page that showed or linked the deleted file: each keeps its content and its version", async () => {
     const file = await createFile({ folder: handbook, name: "setup.png", editor: alice });
@@ -339,7 +339,7 @@ describe("delete_file", () => {
 });
 
 describe("both tools", () => {
-  // mcp-file-move-and-delete-requirements.md, R2 and R9: the file is found by its tab, if it is in one, and its
+  // mcp.md, "Tools", `move_or_rename_file` and `delete_file`: the file is found by its tab, if it is in one, and its
   // current name, as read_file finds it; mcp.md, "What holds for all of them": a name with spaces around it gets the
   // not-found error, and no tool reaches another folder.
   it("find a file only by its own tab and its exact name in the folder of the connection, and answer every other with an error that names list_folder", async () => {
@@ -372,7 +372,7 @@ describe("both tools", () => {
     expect(await storedFiles()).toEqual(before);
   });
 
-  // mcp-file-move-and-delete-requirements.md, R4 and R9, and optimistic-locking.md, "Files": the check of the lock
+  // optimistic-locking.md, "Files": the check of the lock
   // version is part of the write, so of changes at the same time based on the same lock version exactly one wins.
   it("let exactly one of two moves and a delete at the same time, based on the same lock version, win", async () => {
     for (let round = 0; round < 5; round++) {
@@ -404,7 +404,7 @@ describe("both tools", () => {
     }
   });
 
-  // mcp-file-move-and-delete-requirements.md, R13: both tools work while the files are off, through the MCP server and
+  // mcp.md, "Decisions": both tools work while the files are off, through the MCP server and
   // not only in the service.
   it("move and delete a file through the MCP server while the files are off", async () => {
     const file = await createFile({ folder: handbook, name: "setup.png", editor: alice });
@@ -432,7 +432,7 @@ describe("both tools", () => {
     });
   });
 
-  // mcp-file-move-and-delete-requirements.md, R16: a role lowered between the request and the change is a tool error
+  // mcp.md, "What holds for all of them": a role lowered between the request and the change is a tool error
   // and changes nothing: a Writer connection of a user who is now a Reader cannot move, a Manager connection of a user
   // who is now a Writer cannot delete.
   it("change nothing when the user's role was lowered after the connection's tools were listed, and answer with a tool error", async () => {
@@ -465,7 +465,7 @@ describe("both tools", () => {
     expect(await storedFiles()).toEqual(before);
   });
 
-  // mcp-file-move-and-delete-requirements.md, R16 and R5: a failure of the database changes nothing and is a tool
+  // mcp.md, "What holds for all of them" and "Tools", `move_or_rename_file`: a failure of the database changes nothing and is a tool
   // error with a general message; mcp.md, "What holds for all of them": the error itself is not passed on. The move
   // and the update of the links are one change, so a page that cannot be updated keeps the file where it was.
   it("change nothing on a failure of the database, the file and the pages of a move included, and answer with a general tool error", async () => {
@@ -493,8 +493,7 @@ describe("both tools", () => {
     expect(await storedPages()).toEqual(pages);
   });
 
-  // mcp-file-move-and-delete-requirements.md, R16: neither tool takes a folder; mcp.md, "What holds for all of them":
-  // no tool reaches another folder.
+  // mcp.md, "What holds for all of them": neither tool takes a folder, and no tool reaches another folder.
   it("take no folder argument, and a folder given all the same reaches no other folder", async () => {
     const tools = (await send(connection("manager"), { method: "tools/list" })).result?.tools as {
       name: string;
@@ -534,7 +533,7 @@ describe("both tools", () => {
     expect(await getTestDb().file.findUniqueOrThrow({ where: { id: elsewhere.id } })).toEqual(otherBefore);
   });
 
-  // mcp-file-move-and-delete-requirements.md, R17 and mcp.md, "Prompt injection": both results start with the note, in
+  // mcp.md, "Prompt injection": both results start with the note, in
   // the text as well as in the structured data, and the text holds the same data.
   it("start the text of their results with the note, and give the same data as text and as structured data", async () => {
     const file = await createFile({ folder: handbook, name: "setup.png", editor: alice });
@@ -558,7 +557,7 @@ describe("both tools", () => {
     }
   });
 
-  // mcp-file-move-and-delete-requirements.md, "Effect on existing features", and signed-file-links.md, "Downloading
+  // signed-file-links.md, "Downloading
   // with a link": a move, rename or delete through MCP ends a download link of the file, as one in the browser does.
   it("end a download link of the file that has not expired", async () => {
     const { grant } = await createGrant({ owner: alice, folder: handbook, role: "manager" });

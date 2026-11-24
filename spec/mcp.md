@@ -16,15 +16,18 @@ actor of MCP `inMcp()` in `src/features/folder-roles/actors.ts`. The protocol is
 (`@modelcontextprotocol/server`, see `tech.md`).
 
 Tests: `e2e/mcp-access.spec.ts`, `e2e/mcp-read.spec.ts`, `e2e/mcp-write.spec.ts`, `e2e/mcp-edit.spec.ts`,
-`e2e/mcp-manager.spec.ts`, `e2e/mcp-limits.spec.ts` for the limits of the endpoint, `e2e/file-download-links.spec.ts`
+`e2e/mcp-manager.spec.ts`, `e2e/mcp-files.spec.ts` for moving, renaming and deleting a file, `e2e/mcp-limits.spec.ts`
+for the limits of the endpoint, `e2e/file-download-links.spec.ts`
 for the links of `get_file_download_link`, `e2e/file-upload-links.spec.ts` for the links of `get_file_upload_link`, `e2e/oauth.spec.ts` for the access tokens of OAuth, `e2e/ai-apps.spec.ts` for the view "AI
 apps", `integration/grant-service.test.ts`, `integration/page-service.test.ts`, `integration/folder-service.test.ts`,
+`integration/file-service.test.ts`,
 and the unit tests next to the code,
 `src/features/mcp/tools.test.ts`, `src/features/mcp/edits.test.ts`, `src/features/mcp/http.test.ts`,
 `src/features/mcp/rate-limit.test.ts` and `src/features/mcp/queries.test.ts`, the tests of the limits written from the
 spec alone, `src/features/mcp/limits.spec-tests.test.ts`, and the cost test `src/features/mcp/edits.cost.test.ts`.
 The tests of the wiki links and the hint on the addresses written from the spec alone are
-`integration/mcp-wiki-links.spec-tests.test.ts` and `e2e/mcp-wiki-links-spec-tests.spec.ts`; the links are built by
+`integration/mcp-wiki-links.spec-tests.test.ts` and `e2e/mcp-wiki-links-spec-tests.spec.ts`, those of moving,
+renaming and deleting a file `integration/mcp-files.spec-tests.test.ts`; the links are built by
 `wikiLinkOf()` and `embedLinkOf()` of `src/features/pages/wiki-link-target.ts`.
 
 ## The addresses
@@ -126,8 +129,8 @@ The tests of the wiki links and the hint on the addresses written from the spec 
 
 ## Tools
 
-A Reader connection gets the five read tools, a Writer connection also the four write tools of pages and the upload
-tool of files, and a Manager connection also the four tools of a Manager: five, ten and fourteen tools. A tool is registered only when the role of
+A Reader connection gets the five read tools, a Writer connection also the four write tools of pages and the two write
+tools of files, and a Manager connection also the five tools of a Manager: five, eleven and sixteen tools. A tool is registered only when the role of
 the connection may do the function of the folder that its write checks (`mayDo()` with `FUNCTION_ROLES` in
 `src/features/folder-roles/roles.ts`), so the tools follow the services. A tool that the connection does not get is not
 listed, and a call of it changes nothing.
@@ -141,7 +144,7 @@ Read tools, which say so to the client (`readOnlyHint`):
   tab, its type, the size, width and height of its current version (none for a PDF), the full URL of the file itself
   and of its details page, its wiki link (`wikiLink`), its embed link (`embedLink`, null for a PDF), its last
   change and its lock version (`lockVersion`, see "Files" in `optimistic-locking.md`), which `get_file_upload_link`
-  takes for a new version. Every tab, page and file also comes with its last editor and how it was last changed (`web` or
+  takes for a new version, `move_or_rename_file` for a move and `delete_file` for a delete. Every tab, page and file also comes with its last editor and how it was last changed (`web` or
   `mcp`, see "Last editor" in `content-structure.md`), so that an agent sees which pages an AI app changed last
   without reading each one.
 - `read_page`: one page of the folder by its tab, if it is in one, and its name: the title, the Markdown content, the
@@ -156,9 +159,10 @@ Read tools, which say so to the client (`readOnlyHint`):
   it, which downloads the file without a login for a few minutes, with the name, tab, type and size of the file and
   when the link expires (see `signed-file-links.md`, which holds its rules).
 - No tool returns the content of a file, as bytes, as an image or as text: `get_file_download_link` returns a link, not
-  content. A Writer and a Manager connection upload a file with the link of `get_file_upload_link`; no tool moves,
-  renames, reverts or deletes a single file: that is done only in the browser. The one tool after which a file is
-  deleted is `delete_tab` of a Manager connection, which deletes the files of the tab together with its pages.
+  content. A Writer and a Manager connection upload a file with the link of `get_file_upload_link` and move and rename
+  one with `move_or_rename_file`; a Manager connection deletes one with `delete_file`, and `delete_tab` deletes the
+  files of a tab together with its pages. Only reverting a file to an earlier version, and listing its versions, are
+  done in the browser.
 - `search_pages`: the pages of the whole folder that match the words of `query`, the best match first, each with its
   title, its name and tab as `read_page` takes them, its address, its wiki link, a piece of its text, its last change, its last
   editor and how it was last changed. It returns 10 results unless `limit` asks for another number, at most 25, from
@@ -192,8 +196,8 @@ that change the content of a page carry `destructiveHint` as well, because they 
   channel `mcp`, like a content change in the browser, so that a user can undo it in the browser from the history of
   the page (see `page-history.md`). No tool reads the history or reverts a page.
 
-The upload tool of files, for a Writer and a Manager connection, with the hints of a tool that writes and without
-`destructiveHint`, like `create_page`:
+Write tools of files, for a Writer and a Manager connection, each with the hints of a tool that writes and without
+`destructiveHint`, like `create_page` and `move_or_rename_page`, because neither removes a version:
 
 - `get_file_upload_link`: a short-lived signed link for one upload of an image or PDF of the stated exact size,
   directly in the folder or in one of its tabs, as a new file, or with the lock version that `read_file` gave as a new
@@ -201,16 +205,36 @@ The upload tool of files, for a Writer and a Manager connection, with the hints 
   that says what to do next. The result holds the link, its expiry, a ready `curl` command with a placeholder for the
   path of the local file, and the wiki link and embed link that the file will have; the app sends the bytes to the
   link and then adds the file to a page with the tools of pages (see `signed-file-links.md`, which holds its rules).
+- `move_or_rename_file`: a file by its tab, if it is in one, and its name with its extension, to another existing tab of
+  the folder, or directly into it, with a new name, based on the lock version that `read_file` or `list_folder` gave,
+  as the browser moves a file (see "Moving, renaming, deleting and restoring" in `attachments.md`). The new name is
+  given with its extension and keeps the extension of the file's type: another extension, none, a name that breaks the
+  name rule of files and a name that another file at the target place has are tool errors that say what to do, the
+  first two naming the extension of the type, such as `.png`, the third stating the whole rule. A file that is not
+  found, a page or a deleted file of the name included, is the tool error that points to `list_folder`. A move based
+  on another lock version, or on none, is refused with who changed the file last, how and when, and where it is now.
+  The current name and place change nothing and keep the lock version. It changes every link and embed of the file in
+  the pages of the folder in the same write, and the result gives the file as stored, its name, tab, type, both
+  addresses, its wiki link and embed link and its lock version, with the pages whose links it updated, with their name,
+  tab and title (see "Updates on a move or rename" in `wiki-links.md`).
 
 Tools of a Manager, for a Manager connection only. They do what the browser does for a Manager (see
-`content-structure.md` and `page-deletion.md`). `delete_page` and `delete_tab` carry the hint of a tool that destroys
-(`destructiveHint`), `create_tab` and `rename_tab` the hints of a tool that writes:
+`content-structure.md` and `page-deletion.md`). `delete_page`, `delete_file` and `delete_tab` carry the hint of a tool
+that destroys (`destructiveHint`), `create_tab` and `rename_tab` the hints of a tool that writes:
 
 - `delete_page`: a page by its tab, if it is in one, and its name, based on the version that `read_page` gave, deleted
   as in the browser: it goes to the deleted items of the folder, with the user of the connection as the user who
   deleted it. The result names the page (its
   name, title and the tab it was in), the address of the list "Deleted items" of the folder, `/deleted-items/<folder>`, and
   that a Manager or Owner can restore it there in the browser.
+- `delete_file`: a file, found as `move_or_rename_file` finds it, based on the lock version that `read_file` or
+  `list_folder` gave, deleted as in the browser: it goes with all its versions to the deleted items of the folder, its
+  name is free at once, and the user of the connection is the user who deleted it. A file that pages still show or link
+  is deleted all the same, as in the browser, and those pages show it as missing; the description says so before the
+  call. The result names the file (its name, type and the tab it was in), the address of the deleted items of the
+  folder, that a Manager or Owner can restore it there in the browser with all its versions, and the pages of the
+  folder that showed or linked it when it was deleted, with their name, tab and title, so that the agent can change
+  them (see "Deleting a file" in `page-deletion.md`).
 - `create_tab`: a new, empty tab of the folder with the given name, under the name rule of the browser. `create_page`
   and `move_or_rename_page` can use it at once. A name that breaks the rule or that another tab of the folder has is a
   tool error. The result names the tab and its address.
@@ -224,11 +248,10 @@ Tools of a Manager, for a Manager connection only. They do what the browser does
   and every file in the tab is deleted with it, that the tab cannot be restored and that its pages and files can only
   be restored one by one by a Manager or Owner in the browser. The result names the tab, the number of pages deleted
   with it and the name and title of each, the name of each file deleted with it, both without a limit, and the address
-  of the deleted items of the folder. An empty tab is deleted as well, with the number 0. It is the only tool after
-  which a file is deleted: no tool moves, renames, reverts or deletes a single file.
+  of the deleted items of the folder. An empty tab is deleted as well, with the number 0.
 
-What a Manager connection cannot do, because no tool offers it: see, read or restore deleted pages, see the roles of
-the folder or its Owners, rename the folder, or give, change or remove roles. This spec holds the rule for the deleted
+What a Manager connection cannot do, because no tool offers it: see, read or restore deleted pages and files, revert a
+file or list its versions, see the roles of the folder or its Owners, rename the folder, or give, change or remove roles. This spec holds the rule for the deleted
 pages; the other specs point here. A deleted page is never listed, read or changed through MCP and is answered like a
 page that does not exist, for every role. Only the list of tools holds this rule: the reads of the service would give
 a Manager connection the deleted pages, so a new tool must not call them. The writes of roles are not offered through
@@ -246,7 +269,8 @@ What holds for all of them:
   `content-structure.md`). Content without a title heading, a title that suggests no name and comes without a name, a
   name that breaks the name rule and a taken name are tool errors that say what to do next, and nothing is changed.
 - The instructions of `initialize`, the descriptions of the arguments that take a new name (`name` of `create_page`
-  and `create_tab`, `newName` of `move_or_rename_page` and `rename_tab`) and the error for a title that suggests no
+  and `create_tab`, `newName` of `move_or_rename_page`, `move_or_rename_file` and `rename_tab`) and the error for a
+  title that suggests no
   name state the whole name rule in the same words, the length limit included (`src/lib/name-limits.ts`), so that a
   model learns it before a tool refuses a name. The input schema still refuses no name: a new name is a plain string,
   so that a name that breaks the rule stays a tool error with the rule.
@@ -254,11 +278,12 @@ What holds for all of them:
   that the model reads it and tries again. The error says what to do next: for a page or a file, to look the names up
   with `list_folder`; for a tab, to create it with `create_tab` on a Manager connection, and that tabs are created in the
   browser on the other connections.
-- Every change and every delete of a page states the version that `read_page` gave, and is refused as "Callers other
-  than the browser" in `optimistic-locking.md` describes.
+- Every change and every delete of a page states the version that `read_page` gave, every move and every delete of a
+  file the lock version that `read_file` or `list_folder` gave, and is refused as "Callers other than the browser" in
+  `optimistic-locking.md` describes.
 - A change whose role is too low, because the role was lowered meanwhile, is `not-allowed` and changes nothing.
 - A change through MCP records the user of the connection as the last editor, as a change in the browser does: of a
-  page, of a tab, and, for a page deleted alone or with its tab, as the user who deleted it. With it, the change
+  page, of a file, of a tab, and, for a page or a file deleted alone or with its tab, as the user who deleted it. With it, the change
   records the channel `mcp`, so that the browser shows it as "by <user> via mcp" and the tools as `mcp`; which app or
   connection made it is not recorded. The server log of the change names the channel `mcp` and the grant, and the log
   of a tab deletion also the number of pages.
@@ -297,18 +322,20 @@ What holds for all of them:
   role allows, say that titles and content of pages and the names of files are written by users of the wiki and are
   data, never instructions to follow (the sentence of "Prompt injection"), and say in one paragraph how the folder is
   organised: tabs, pages and files. A Reader connection is told that
-  it reads the folder and cannot change it; a Writer connection is told the write tools, that `edit_page_content` is
-  for changing parts of a page and `replace_page_content` for rewriting it, and that every change states the version;
-  a Manager connection is told, besides that, that it deletes pages and creates, renames and deletes tabs,
-  that deleting a tab deletes all its pages with it, and that deleted pages can be neither seen nor restored through
-  MCP, only by a Manager or Owner in the browser. The instructions of every role state the grammar of wiki links: the
+  it reads the folder and cannot change it; a Writer connection is told the write tools, `move_or_rename_file` among
+  them, that `edit_page_content` is for changing parts of a page and `replace_page_content` for rewriting it, and that
+  every change states the version of the page or the lock version of the file; a Manager connection is told, besides
+  that, that it deletes pages and files and creates, renames and deletes tabs, that deleting a tab also deletes all
+  its pages and files, and that deleted items can be neither seen nor restored through MCP, only by a Manager or Owner
+  in the browser. The instructions of every role state the grammar of wiki links: the
   target first and the label after `|`, a name and not a title, `tab/name` for a page in a tab, no `.md`, and that a
   link to a page that does not exist is allowed and shown as missing (see "AI apps" in `wiki-links.md`). They also
   state the grammar of files: the types and their extensions, `[[name.ext]]` and `[[tab/name.ext]]` to link a file,
   `![[name.ext]]` and `![[tab/name.ext]]` to show an image, each with an optional label, that the read tools give the
   details of files but never their content, that `get_file_download_link` gives a link that downloads one file for a
   few minutes and that such a link must never be written into a page, because it expires and lets anyone who reads it
-  download the file, and that a single file is moved, renamed, reverted or deleted only in the browser. A Writer and a
+  download the file, and that a file is reverted to an earlier version only in the browser and deleted files can be
+  neither seen nor restored through MCP. A Writer and a
   Manager connection are told as well how a file is uploaded with `get_file_upload_link` and added to a page with its
   embed or wiki link, and that an upload link must never be written into a page, because it lets anyone who reads it
   upload into the folder until it expires; a Reader connection is offered no uploading. The
@@ -358,11 +385,11 @@ What the server does:
   (`USER_TEXT_NOTE` in `src/features/mcp/tool-schemas.ts`):
   - in the instructions of every connection, for every role, after what the role allows;
   - at the end of the descriptions of the tools whose results carry titles or content of pages or names of files:
-    `list_folder`, `read_page`, `search_pages`, `read_file`, `get_file_download_link`, `create_page`, `replace_page_content`, `edit_page_content`, `move_or_rename_page`, `get_file_upload_link`, `delete_page` and
-    `delete_tab`;
+    `list_folder`, `read_page`, `search_pages`, `read_file`, `get_file_download_link`, `create_page`, `replace_page_content`, `edit_page_content`, `move_or_rename_page`, `get_file_upload_link`,
+    `move_or_rename_file`, `delete_page`, `delete_file`, `rename_tab` and `delete_tab`;
   - as the field `note`, the first field of the results of these tools, in the structured data and in the JSON of the
     text, and named in their output schemas, so that the model reads it before the page text whichever of the two a
-    client passes on. `create_tab` and `rename_tab` return only a tab, without a title, and carry no note.
+    client passes on. `create_tab` returns only a tab, without a title, and carries no note.
 - It passes titles and content on unchanged: the note is added next to them, and nothing in them is removed, escaped
   or rewritten, links and images included.
 - Tool errors hold no title or content of a page: they name only tab and page names and repeat only the agent's own
@@ -377,14 +404,14 @@ What the server does:
 What is left to the client:
 
 - to ask its user before it runs a tool marked as destructive (`destructiveHint`): `replace_page_content`,
-  `edit_page_content`, `delete_page` and `delete_tab`;
+  `edit_page_content`, `delete_page`, `delete_file` and `delete_tab`;
 - to load no image and open no link of page text without asking its user, because an address in a page can carry
   data of the conversation away;
 - to pass no page text to other tools as instructions, also to the tools of other servers it is connected to.
 
 Real damage needs a client that follows planted text, which the server cannot control. Within the limits above it
-stays in the one folder of the connection, and most of it can be undone in the browser: deleted pages are restored and
-content changes reverted from the history of a page; a deleted tab is not restored, and a move or rename is not part
+stays in the one folder of the connection, and most of it can be undone in the browser: deleted pages and files are
+restored and content changes reverted from the history of a page; a deleted tab is not restored, and a move or rename is not part
 of the history.
 
 ## Decisions
@@ -421,6 +448,21 @@ of the history.
   address.
 - A Manager connection gets full management of the content, deleting pages and creating, renaming and deleting tabs,
   so that an agent can tidy a folder up and not only fill it.
+- Files are moved, renamed and deleted through MCP for parity with the browser, with the same roles and rules, so that
+  no task on a file has to wait for a person in the browser. Reverting stays in the browser. Rejected: reverting
+  through MCP as well, which needs the versions of a file in a tool first.
+- Files get tools of their own, `move_or_rename_file` and `delete_file`, named after the tools of pages. Rejected: page
+  tools that also take a file, whose inputs (version and lock version) and texts would no longer fit both;
+  `move_file`, whose name does not say that it renames.
+- The new name of a file is given with its extension, as every tool and every wiki link names a file. Rejected: a name
+  without the extension, completed by the wiki.
+- A file that pages show or link is deleted as in the browser, and the result of `delete_file` lists those pages, so
+  that the agent can change them without another call. Rejected: refusing a file in use, which is stricter than the
+  browser; a result with the file only, as `delete_page` gives.
+- Both tools of files work while the files are off, as moving and deleting in the browser do, because they change no
+  content. Rejected: refusing them, which would make MCP do less than the browser.
+- The hints follow the tools of pages: only the delete of a file destroys. Rejected: `destructiveHint` on the move as
+  well, which would make some clients ask before every move.
 - `delete_tab` deletes at once; its description warns that all pages of the tab go with it, and the client and the
   user decide whether to confirm. Rejected: sending the expected number of pages, which is refused when the tab holds
   a different number; and two calls, the first only reporting what would be deleted.
@@ -572,8 +614,10 @@ of the history.
 ## Current limits
 
 - no deleted pages or files through MCP (see "Tools")
-- no content of files in a tool result, only a short-lived link to download one, and no move, rename, revert or
-  delete of a single file; a file is uploaded only with the short-lived link of `get_file_upload_link` (see "Tools")
+- no content of files in a tool result, only a short-lived link to download one; a file is uploaded only with the
+  short-lived link of `get_file_upload_link` (see "Tools")
+- no revert of a file and no list of its versions through MCP: both stay in the browser
+- no move of a file into another folder, and no move or delete of several files in one call
 - `edit_page_content` changes only exact texts: no diffs or patches, no line numbers or positions, no edits targeted
   at a heading or section, and no appending or prepending without naming a text
 - no change of several pages in one call, apart from the update of the wiki links that a move, a rename or a tab
@@ -590,7 +634,8 @@ of the history.
 - no CORS: a client that runs in a browser on another origin cannot call an MCP address
 - no tool that lists the accounts
 - no link fields in the lists of pages and files that have no address: `linkedFrom` of `read_page`,
-  `shownOrLinkedFrom` of `read_file`, `updatedPages` of `move_or_rename_page` and `rename_tab`, and the pages and
+  `shownOrLinkedFrom` of `read_file` and `delete_file`, `updatedPages` of `move_or_rename_page`,
+  `move_or_rename_file` and `rename_tab`, and the pages and
   files of `delete_tab` keep the fields they have, from which the grammar in the instructions builds the link
 - no address for people that works without a login: the addresses open only in a browser after a login; an app
   downloads a file only with the short-lived link of `get_file_download_link` and uploads one only with that of

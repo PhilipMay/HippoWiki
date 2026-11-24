@@ -150,11 +150,14 @@ Tests:
 
 - A Writer, a Manager and an Owner move a file into another tab of its folder or directly into it, and rename it; every
   link and embed of the file in the pages of the folder is changed in the same write, and the dialog says how many
-  pages it changes (see `content-structure.md` and "Updates on a move or rename" in `wiki-links.md`). Renaming a tab
-  changes the links and embeds of its files as well.
+  pages it changes (see `content-structure.md` and "Updates on a move or rename" in `wiki-links.md`). A Writer and a
+  Manager connection do the same through MCP with `move_or_rename_file`. Renaming a tab changes the links and embeds
+  of its files as well.
 - A Manager and an Owner delete a file as a soft delete; deleted files are listed with the deleted pages under "Deleted
   items" and restored there with a name and a place, with all their versions (see "Deleting a file" in
-  `page-deletion.md`). Deleting a tab deletes its files with its pages, in the browser and through `delete_tab`.
+  `page-deletion.md`). A Manager connection deletes a file the same way through MCP with `delete_file`. Deleting a tab
+  deletes its files with its pages, in the browser and through `delete_tab`.
+- Reverting a file to an earlier version is done only in the browser, and deleted files are restored only there.
 
 ## Links and embeds
 
@@ -187,8 +190,10 @@ Tests:
 - A Writer and a Manager connection upload a new file or a new version of a file with a short-lived signed link of
   `get_file_upload_link`, to which the app sends the bytes of the file (see `signed-file-links.md`). A new version is
   based on the lock version of the file, which `list_folder` and `read_file` give.
-- No tool moves, renames, reverts or deletes a single file. The one tool after which a file is deleted is `delete_tab`
-  of a Manager connection, together with its tab (see "Tools" in `mcp.md`).
+- A Writer and a Manager connection move and rename a file with `move_or_rename_file`, and a Manager connection
+  deletes one with `delete_file`, as the browser does and with its rules, each based on the lock version of the file;
+  `delete_tab` of a Manager connection deletes the files of a tab with the tab (see "Tools" in `mcp.md`). No tool
+  reverts a file, lists its versions, or sees or restores a deleted file.
 
 ## Decisions
 
@@ -242,9 +247,10 @@ Tests:
 - Files are uploaded only from the views of folders and tabs. Rejected for now: uploading from the editor.
 - Files are found by their names; the text of PDFs comes later.
 - AI apps read the details of files, through `list_folder`, `read_file` and `search_pages`, download a file with the
-  short-lived link of `get_file_download_link`, upload one with the short-lived link of `get_file_upload_link`, and
-  `delete_tab` deletes the files of a tab with its pages, as in the browser. Rejected for now: moving, renaming,
-  reverting and deleting a single file through MCP; images as images and PDFs as their text. Rejected: refusing
+  short-lived link of `get_file_download_link`, upload one with the short-lived link of `get_file_upload_link`, move
+  and rename one with `move_or_rename_file`, and delete one with `delete_file` or the files of a tab with
+  `delete_tab`, as in the browser, so that no task on a file has to wait for a person (see "Decisions" in `mcp.md`).
+  Rejected for now: reverting a single file through MCP; images as images and PDFs as their text. Rejected: refusing
   `delete_tab` for a tab with files.
 - The address of a file answers logged-in users with a role, checked on every request, and an AI app with a
   short-lived signed link that follows the access of its connected app (see `signed-file-links.md`). Rejected: such
@@ -253,7 +259,7 @@ Tests:
 ## Current limits
 
 - no other types than PNG, JPEG, GIF, WebP and PDF, such as SVG, Office or text files
-- no move, rename, revert or delete of a single file through MCP, and no content of files in a tool result
+- no revert of a single file through MCP, and no content of files in a tool result
 - no upload from the editor (paste, drop or a toolbar button)
 - no limit on the total size of files per folder or user (see "Rate limits and quotas" in `roadmap.md`)
 - no S3-compatible storage; no host of its own for files

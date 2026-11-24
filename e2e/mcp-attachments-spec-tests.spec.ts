@@ -35,8 +35,8 @@ async function allFiles() {
   };
 }
 
-// attachments.md, "MCP": no tool of any connection uploads, changes, moves, renames or deletes a
-// single file, also not a tool of pages that is given the name of a file.
+// attachments.md, "MCP": only the tools of files change a single file; a tool of pages that is given the name of a
+// file changes no file and creates none.
 test("the tools of pages, given the name of a file, change no file and create none", async ({ request }) => {
   const guides = await createTab({ folder: projects, name: "guides" });
   await createFile({ tab: guides, name: "diagram.png", versions: [{}, {}] });

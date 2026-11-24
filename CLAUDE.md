@@ -37,10 +37,6 @@ file itself holds.
   suggest for attachments in HippoWiki, its editor and MCP?
 - `spec/signed-file-links.md`: How does an AI app download an image or PDF of its folder, or upload one into it, with a
   short-lived signed link, and how is such a link checked?
-- `spec/mcp-file-move-and-delete-requirements.md`: What must AI apps be able to do when they move, rename and delete a
-  single image or PDF through MCP?
-- `spec/mcp-file-move-and-delete-steps.md`: In which steps are the MCP tools that move, rename and delete a single
-  image or PDF built?
 - `spec/issue-report.md`: How is an issue of a review of code or documents reported?
 - `spec/review-report-v2.md`: Which findings and questions of the reviews, checks and tests are open, in one part per
   review? A fixed finding is deleted, a part with its last finding, and the file with its last part.

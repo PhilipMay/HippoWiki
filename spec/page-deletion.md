@@ -32,8 +32,12 @@ Code: `src/features/pages/` (`deletePage`, `restorePage`, `listDeletedPages` and
   Manager or Owner on the folder (see `folder-roles.md`).
 - A deleted file keeps its folder and all its versions, forgets its tab, and the user who deleted it becomes its last
   editor with the channel; its lock version counts up. Its name is free at once.
-- Files are also deleted together with their tab, in the browser and through `delete_tab` of a Manager connection
-  (see "Deleting a tab" in `content-structure.md`); no tool deletes a single file.
+- A Manager connection deletes a single file with `delete_file`, the same soft delete with the user of the
+  connection as the user who deleted it and the channel `mcp`; a file that pages still show or link is deleted all the
+  same, and the result names the pages of the folder that showed or linked it then, so that the agent can change them
+  (see "Tools" in `mcp.md`). Files are also deleted together with their tab, in the browser and through `delete_tab`
+  of a Manager connection (see "Deleting a tab" in `content-structure.md`). Deleted files are restored only in the
+  browser.
 - A delete is refused when the file was changed after the dialog was opened, as for pages (see "Files" in
   `optimistic-locking.md`).
 - A deleted file is invisible as a deleted page is: it is missing from the section "Files", its details page shows the

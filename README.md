@@ -31,7 +31,8 @@ pages show images with `![[name.png]]` and link files with `[[name.pdf]]`, every
 versions, can be moved, renamed, deleted and restored like a page, and is served with headers that run nothing in it.
 The location and camera data of a photo are removed on upload unless the uploader keeps them. AI apps list files and
 read their details through MCP, download one with a short-lived signed link, and, with a Writer or Manager connection,
-upload a new file or a new version with such a link (`spec/attachments.md`, `spec/signed-file-links.md`).
+upload a new file or a new version with such a link and move and rename files; a Manager connection also deletes them
+(`spec/attachments.md`, `spec/signed-file-links.md`, `spec/mcp.md`).
 
 Every folder can be searched from a search field on its pages: titles, names and content, in the language each page is
 written in, by parts of words and with typos, with phrases, excluded words and `or`, and files by their names. AI apps
@@ -208,9 +209,9 @@ To connect an app, such as Claude Code or the connector of claude.ai or ChatGPT:
 
 A client that cannot connect through OAuth cannot use the MCP server. A Reader connection lists the tabs and pages of
 its folder, searches its pages and reads them; a Writer connection also creates pages, changes parts of their content by exact
-search-and-replace, replaces their whole content and moves or renames them, and uploads images and PDFs;
-a Manager connection also deletes pages and creates, renames and deletes tabs. Deleted pages are restored only in the
-browser (`spec/mcp.md`). The tools return, next to the address of each page and file, the wiki link a page uses for
+search-and-replace, replaces their whole content and moves or renames them, and uploads, moves and renames images and
+PDFs; a Manager connection also deletes pages and files and creates, renames and deletes tabs. Deleted pages and files
+are restored, and files reverted, only in the browser (`spec/mcp.md`). The tools return, next to the address of each page and file, the wiki link a page uses for
 it and the embed link of an image; the addresses are for people and open only in a browser after a login, so an app
 gives them to its user instead of fetching them. To download an image or PDF, an app gets a link with
 `get_file_download_link` that works without a login for 10 minutes (`HIPPOWIKI_FILE_LINK_LIFETIME`,

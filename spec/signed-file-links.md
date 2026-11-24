@@ -109,7 +109,7 @@ Tests:
 - The file is read as the connected app reads it, with the actor of MCP of the grant: the folder, the tab if the
   address has one and the file exist, the file is not deleted and is in the folder of the grant, and its current
   version is the version of the link. A rename, a move, a new version, a revert and a delete of the file each end the
-  link, and so does the address of another file. A restore to the same place makes a link that has not expired work
+  link, in the browser and through `move_or_rename_file` and `delete_file` alike, and so does the address of another file. A restore to the same place makes a link that has not expired work
   again, because the restore keeps the versions and their ids.
 - While the files are off a link that has not expired gets the answer of a missing file.
 - Every failure gets the same plain 404 as a file that does not exist, with the same status and body, so that a link
@@ -146,8 +146,8 @@ Tests:
 - The instructions of a Writer and a Manager connection name the tool, say how a file is uploaded with it and added
   to a page with its embed or wiki link, and warn that an upload link must never be written into a page, because it
   lets anyone who reads it upload into the folder until it expires. Those of a Reader connection offer no uploading.
-  No connection is told any more that a file is uploaded only in the browser; moving, renaming, reverting and deleting
-  a single file still are.
+  No connection is told any more that a file is uploaded, moved, renamed or deleted only in the browser; reverting a
+  single file still is.
 - Handing out a link stores nothing.
 
 ## What an upload link holds
@@ -291,8 +291,8 @@ cross-site`. Unlike the browser, a request without `Origin`, as `curl` sends it,
 - A Writer and a Manager connection upload, as a Writer, a Manager and an Owner upload in the browser. Rejected:
   Manager connections only.
 - An upload link uploads a new file or a new version of an existing file, based on its lock version as every change
-  through MCP is. Rejected: new files only. Moving, renaming, reverting and deleting a single file stay in the browser
-  for now.
+  through MCP is. Rejected: new files only. Moving, renaming and deleting a single file have tools of their own,
+  `move_or_rename_file` and `delete_file` (see `mcp.md`); reverting stays in the browser.
 - The tool is named `get_file_upload_link`, next to `get_file_download_link`. Rejected: `create_file_upload_link`.
 - The tool carries the hints of a tool that writes and does not destroy, like `create_page`. Rejected:
   `destructiveHint`.
@@ -336,6 +336,6 @@ cross-site`. Unlike the browser, a request without `Origin`, as `curl` sends it,
 - no content of a file in a tool result (see "Files through MCP" in `roadmap.md`), no files sent inside a tool call,
   and no file that the wiki fetches from an address that the app names
 - no uploads from chat clients that cannot send the bytes of a file themselves, such as claude.ai and Claude Desktop
-- no moving, renaming, reverting or deleting of a single file through MCP; these stay in the browser
+- no reverting of a single file through MCP; it stays in the browser
 - no rate limit of downloads or uploads by link; a reverse proxy can limit them
 - a download or an upload by link does not show as a use of the connected app

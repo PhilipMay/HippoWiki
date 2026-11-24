@@ -75,6 +75,9 @@ This section is the rule of the version for every caller other than the browser,
   `replace_page_content`, `edit_page_content`, `move_or_rename_page` and `delete_page` state it. A change or delete based on an older
   version, or on none, is refused with a tool error that names who changed the page last, how (`web` or `mcp`) and
   when, and tells the agent to read the page again; nothing is changed.
+- The MCP tools of files follow the same rule with the lock version of the file: `read_file` and `list_folder` give
+  it, and `get_file_upload_link` (for a new version), `move_or_rename_file` and `delete_file` state it (see "Files"
+  below).
 
 ## Files
 
@@ -83,11 +86,11 @@ Files are protected as pages are, with their lock version (see "Terms" in `archi
 - Every file has a lock version: 1 when it is uploaded, counted up by every stored change of the file in the same
   write: a new version, a revert, a move or rename, a delete and a restore. The versions of a file,
   its stored contents, are another thing: the details page lists them.
-- A new version, a revert and a move or rename state the lock version they are based on: the one the file had when the
-  dialog was opened, `replace=<lock version>` of the upload address and the hidden field of "Revert file" and "Move or
+- A new version, a revert, a move or rename and a delete state the lock version they are based on: the one the file
+  had when the dialog was opened, `replace=<lock version>` of the upload address and the hidden field of "Revert file" and "Move or
   rename file" (`src/features/files/fields.ts`). The service refuses a change based on another lock version, or on none, with
-  `file-changed` and the file as it is now; the check is part of the write (`uploadFile()`, `revertFile()` and
-  `moveOrRenameFile()` of
+  `file-changed` and the file as it is now; the check is part of the write (`uploadFile()`, `revertFile()`,
+  `moveOrRenameFile()` and `deleteFile()` of
   `src/features/files/service.ts`), also for an upload that was refused only after its body was read, whose blob is
   then removed again unless a version holds it.
 - A refused revert shows its dialog again at `?action=revert&version=<n>&notice=changed`, and a refused move or rename
@@ -102,9 +105,15 @@ Files are protected as pages are, with their lock version (see "Terms" in `archi
   the id of the file, so that the upload by the link is based on them as an upload in the browser is based on
   `replace=<lock version>`. A change of the file between the link and its upload refuses the upload with `file-changed`
   (see "Uploading with a link" in `signed-file-links.md`).
+- An AI app states the lock version that `read_file` or `list_folder` gave for a move or rename with
+  `move_or_rename_file` and for a delete with `delete_file`, as the browser states it for its dialogs. A move or delete
+  based on another lock version, or on none, is refused with a tool error that names who changed the file last, how
+  and when, and where it is now, and tells the agent to read it again; nothing is changed (see "Tools" in `mcp.md`).
 - Tests: `integration/file-service.test.ts` (a new version and a revert at the same time), `src/features/files/`
   (`service.test.ts`, `actions.test.ts`, `file-query.test.ts`), `e2e/file-details.spec.ts`, `e2e/move-or-rename-file.spec.ts`,
-  and for a new version by link `integration/file-upload-link-service.test.ts` and `e2e/file-upload-links.spec.ts`.
+  for a new version by link `integration/file-upload-link-service.test.ts` and `e2e/file-upload-links.spec.ts`, and
+  for a move and a delete through MCP `e2e/mcp-files.spec.ts` and
+  `integration/mcp-files.spec-tests.test.ts`.
 
 ## Restoring
 

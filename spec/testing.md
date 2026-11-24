@@ -486,7 +486,7 @@ How the code is tested. Commands are listed in `README.md`.
   access token of a grant from `createGrant()`, for Reader, Writer and Manager connections, each from a test database
   reset by `setUpProjects()`: `e2e/mcp-access.spec.ts` the tokens, the binding of a connection to its address and the
   current role behind it, `e2e/mcp-read.spec.ts` the protocol and the read tools, `e2e/mcp-write.spec.ts` the write
-  tools of a Writer with their locking, `e2e/mcp-edit.spec.ts` the replacements of `edit_page_content`, `e2e/mcp-manager.spec.ts` the tools of a Manager, and `e2e/mcp-search.spec.ts` the search tool. Every
+  tools of a Writer with their locking, `e2e/mcp-edit.spec.ts` the replacements of `edit_page_content`, `e2e/mcp-manager.spec.ts` the tools of a Manager, `e2e/mcp-files.spec.ts` moving, renaming and deleting a file, and `e2e/mcp-search.spec.ts` the search tool. Every
   test of these specs connects as the user of its own that `setUpProjects()` creates, never as `alice`: the budget of
   the rate limit of MCP is kept per user in the memory of the server of a worker and outlives `resetTestDatabase()`, so
   one known user would share one budget across all MCP specs of a worker. Their tests "in the browser" log in as that
