@@ -24,7 +24,7 @@ does in the browser: a Writer and a Manager connection with `move_or_rename_file
 - [x] Tool `move_or_rename_file`
 - [x] Tool `delete_file`
 - [x] Instructions and descriptions
-- [ ] Spec tests
+- [x] Spec tests
 - [ ] Wrap-up
 
 ## File services for MCP actors
@@ -266,6 +266,8 @@ Move the lasting content of this plan into the other spec files and remove the p
      rename or delete through MCP ends a download link of the file as one in the browser does.
    - `spec/optimistic-locking.md`: "Files" and "Callers other than the browser" say that an AI app states the lock
      version for a move and a delete.
+   - `spec/wiki-links.md`: "Updates on a move or rename" no longer says that a file is moved and renamed only in the
+     browser; the spec tests step changed it already, so the wrap-up only checks it.
    - `spec/architecture.md`, `spec/testing.md` and `spec/tech.md` only where a convention changed, such as the new
      end-to-end spec `e2e/mcp-files.spec.ts` if `testing.md` lists the specs.
 2. The feature has no item of its own in `roadmap.md`; check that no item there still says a single file is moved,

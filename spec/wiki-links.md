@@ -129,8 +129,8 @@ Tests: `src/features/pages/wiki-links.test.ts`, `src/features/pages/wiki-link-ta
 - The "Move or rename page" dialog says how many pages hold links to the page and will be updated, as the folder holds
   them when the dialog is opened; `move_or_rename_page` names the pages whose links it updated.
 - A move or rename of a file updates every link and embed of it in the same way (`moveOrRenameFile()` of
-  `src/features/files/service.ts`), and the "Move or rename file" dialog says how many pages show or link the file. A
-  file is moved and renamed only in the browser.
+  `src/features/files/service.ts`), and the "Move or rename file" dialog says how many pages show or link the file;
+  `move_or_rename_file` does the same through MCP and names the pages whose links it updated.
 - Each page whose content an update changes gets a revision by the user who moved, with the channel of the move,
   marked in its history as links updated after a rename or move; that user becomes its last editor, and its version
   counts up, so that an editor, a dialog or an AI app that holds the older version is refused as changed (see
