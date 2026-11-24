@@ -328,7 +328,7 @@ describe("the instructions", () => {
   );
 
   it.each(["reader", "writer", "manager"] as const)(
-    "state the grammar of files for a %s connection, and that a single file is moved, renamed, reverted or deleted only in the browser",
+    "state the grammar of files for a %s connection, and that a file is reverted only in the browser and deleted files are neither seen nor restored",
     (role) => {
       const instructions = instructionsFor("handbook", role);
       expect(instructions).toContain("images (PNG, JPEG, GIF, WebP) and PDFs");
@@ -336,7 +336,10 @@ describe("the instructions", () => {
       expect(instructions).toContain("[[name.ext]] or [[tab/name.ext]]");
       expect(instructions).toContain("![[name.ext]] or ![[tab/name.ext]]");
       expect(instructions).toContain("no tool returns the content of a file");
-      expect(instructions).toContain("A single file is moved, renamed, reverted or deleted only in the browser.");
+      expect(instructions).toContain(
+        "A file is reverted to an earlier version only in the browser, and deleted files can be neither seen nor " +
+          "restored through this connection.",
+      );
       expect(instructions).not.toContain("uploaded only in the browser");
       expect(instructions).not.toMatch(/is uploaded, [^.]* only in the browser/u);
       expect(instructions).toContain("read_file for the details of one file");
@@ -359,6 +362,46 @@ describe("the instructions", () => {
         "Never write an upload link into a page, because it lets anyone who reads it upload into the folder until " +
           "it expires.",
       );
+    },
+  );
+
+  it.each([
+    ["reader", [], ["move_or_rename_file", "delete_file"]],
+    ["writer", ["move_or_rename_file"], ["delete_file"]],
+    ["manager", ["move_or_rename_file", "delete_file"], []],
+  ] as const)("of a %s connection name the tools that change a file which it gets, and no other", (role, gets, not) => {
+    const instructions = instructionsFor("handbook", role);
+
+    for (const tool of gets) expect(instructions).toContain(tool);
+    for (const tool of not) expect(instructions).not.toContain(tool);
+  });
+
+  it.each(["writer", "manager"] as const)(
+    "of a %s connection say that a change of a file states the lockVersion and one based on an older one is refused",
+    (role) => {
+      const instructions = instructionsFor("handbook", role);
+
+      expect(instructions).toMatch(
+        /every move (and every delete )?of a file the lockVersion that read_file or list_folder gave for it/u,
+      );
+      expect(instructions).toContain("based on an older one is refused");
+    },
+  );
+
+  it.each(["reader", "writer", "manager"] as const)(
+    "and the descriptions of the tools of a %s connection never send moving, renaming or deleting a file to the browser",
+    async (role) => {
+      actor = { ...READER, connection: { ...READER.connection, role } };
+      const tools = (await send({ method: "tools/list" })).result?.tools as { description: string }[];
+
+      for (const text of [instructionsFor("handbook", role), ...tools.map((tool) => tool.description)]) {
+        for (const sentence of text.split(/(?<=\.) /u)) {
+          // What the sentence says is done only in the browser comes before those words.
+          const before = sentence.split("only in the browser")[0] ?? "";
+          if (before === sentence) continue;
+          expect(before).not.toMatch(/moved|renamed|deleted/u);
+        }
+      }
     },
   );
 
@@ -1653,7 +1696,15 @@ describe("the write tools", () => {
   it("tell a Writer connection in the instructions about the write tools and the version", () => {
     const instructions = instructionsFor("handbook", "writer");
 
-    for (const word of ["create_page", "replace_page_content", "edit_page_content", "move_or_rename_page", "version"]) {
+    for (const word of [
+      "create_page",
+      "replace_page_content",
+      "edit_page_content",
+      "move_or_rename_page",
+      "version",
+      "move_or_rename_file",
+      "lockVersion",
+    ]) {
       expect(instructions).toContain(word);
     }
   });
@@ -2434,11 +2485,12 @@ describe("the tools of a Manager connection", () => {
       "replace_page_content",
       "edit_page_content",
       "move_or_rename_page",
-      ...MANAGER_TOOLS.filter((name) => name !== "delete_file"),
+      "move_or_rename_file",
+      ...MANAGER_TOOLS,
     ]) {
       expect(instructions).toContain(tool);
     }
-    expect(instructions).toContain("Deleting a tab deletes all its pages and files with it.");
+    expect(instructions).toContain("Deleting a tab also deletes all its pages and files.");
     expect(instructions).toContain(
       "Deleted items can be neither seen nor restored through this connection: only a Manager or Owner of the folder " +
         "restores them, in the browser.",

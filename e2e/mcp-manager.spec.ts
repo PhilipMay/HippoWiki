@@ -437,7 +437,11 @@ test.describe("the tools of a Manager connection", () => {
     expect(instructions).toContain('the folder "projects" with the role Manager');
     expect(instructions).toContain("creates, renames and deletes tabs");
     expect(instructions).toContain("Use edit_page_content to change parts of a page");
-    expect(instructions).toContain("Deleting a tab deletes all its pages and files with it.");
+    expect(instructions).toContain("Deleting a tab also deletes all its pages and files.");
+    expect(instructions).toContain(
+      "moves and renames files with move_or_rename_file and deletes them with delete_file",
+    );
+    expect(instructions).toContain("A file is reverted to an earlier version only in the browser");
     expect(instructions).toContain("Deleted items can be neither seen nor restored through this connection");
     expect(instructions).toContain(ADDRESS_HINT);
     expect(instructions).toContain("call get_file_upload_link with its name, tab and exact size in bytes");

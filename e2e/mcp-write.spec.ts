@@ -137,7 +137,13 @@ test.describe("the write tools", () => {
       "Never write an upload link into a page, because it lets anyone who reads it upload into the folder until it " +
         "expires.",
     );
-    expect(instructions).toContain("A single file is moved, renamed, reverted or deleted only in the browser.");
+    // A Writer connection moves and renames files, deletes none, and reverts none.
+    expect(instructions).toContain("moves and renames its files with move_or_rename_file");
+    expect(instructions).not.toContain("delete_file");
+    expect(instructions).toContain(
+      "A file is reverted to an earlier version only in the browser, and deleted files can be neither seen nor " +
+        "restored through this connection.",
+    );
   });
 
   test("create_page without a name gives the page the suggested name; bad input is a tool error and creates nothing", async ({

@@ -359,7 +359,8 @@ export const fileOutput = z.object({
     .int()
     .describe(
       "The lock version of the file, counted up by every new version, move and rename; get_file_upload_link takes " +
-        "it for a new version of the file, which is refused if the file has changed since",
+        "it for a new version of the file, move_or_rename_file for a move or rename and delete_file for a delete, " +
+        "each refused if the file has changed since",
     ),
 });
 

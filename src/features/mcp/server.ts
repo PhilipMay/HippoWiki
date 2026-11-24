@@ -81,15 +81,18 @@ const ROLE_ABILITIES: Readonly<Record<McpRole, string>> = {
   reader: "It reads the folder and cannot change it.",
   writer:
     "It reads the folder and changes its pages with create_page, edit_page_content, replace_page_content and " +
-    `move_or_rename_page; it creates no tabs. ${CONTENT_TOOLS} Every change of a page states the version that ` +
-    "read_page gave for it, and a change based on an older version is refused.",
+    "move_or_rename_page, and moves and renames its files with move_or_rename_file; it creates no tabs. " +
+    `${CONTENT_TOOLS} Every change of a page states the version that read_page gave for it, every move of a file ` +
+    "the lockVersion that read_file or list_folder gave for it, and a change based on an older one is refused.",
   manager:
     "It reads the folder and changes its pages like a Writer connection, with create_page, edit_page_content, " +
-    "replace_page_content and move_or_rename_page, deletes pages with delete_page, and creates, renames and deletes " +
-    `tabs with create_tab, rename_tab and delete_tab. ${CONTENT_TOOLS} Every change and every delete of a page ` +
-    "states the version that read_page gave for it, and one based on an older version is refused. Deleting a tab deletes all its pages and files with it. Deleted items " +
-    "can be neither seen nor restored through this connection: only a Manager or Owner of the folder restores them, " +
-    "in the browser.",
+    "replace_page_content and move_or_rename_page, deletes pages with delete_page, moves and renames files with " +
+    "move_or_rename_file and deletes them with delete_file, and creates, renames and deletes tabs with create_tab, " +
+    `rename_tab and delete_tab. ${CONTENT_TOOLS} Every change and every delete of a page states the version that ` +
+    "read_page gave for it, every move and every delete of a file the lockVersion that read_file or list_folder gave " +
+    "for it, and one based on an older one is refused. Deleting a tab also deletes all its pages and files. Deleted " +
+    "items can be neither seen nor restored through this connection: only a Manager or Owner of the folder restores " +
+    "them, in the browser.",
 };
 
 /** The grammar of wiki links, as the instructions tell the model. */
@@ -120,8 +123,10 @@ const UPLOADS =
   "the result, such as with edit_page_content. Never write an upload link into a page, because it lets anyone who " +
   "reads it upload into the folder until it expires.";
 
-/** What stays in the browser for every connection. */
-const FILES_IN_BROWSER = "A single file is moved, renamed, reverted or deleted only in the browser.";
+/** What stays in the browser for every connection: reverting a file, and seeing and restoring deleted files. */
+const FILES_IN_BROWSER =
+  "A file is reverted to an earlier version only in the browser, and deleted files can be neither seen nor restored " +
+  "through this connection.";
 
 /** What the instructions tell the model about the files of the folder: uploading only where the role allows it. */
 function filesFor(role: McpRole): string {
