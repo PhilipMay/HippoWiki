@@ -12,8 +12,9 @@ import type { z } from "zod";
 import { mayDo } from "@/features/folder-roles/roles";
 import type { McpActor } from "@/features/folder-roles/actors";
 import * as linkService from "@/features/files/link-service";
+import { fileExtensionMessage } from "@/features/files/schema";
 import * as fileService from "@/features/files/service";
-import { isImageType } from "@/features/files/types";
+import { FILE_TYPES, isImageType, type FileType } from "@/features/files/types";
 import * as uploadLinkService from "@/features/files/upload-link-service";
 import * as folderService from "@/features/folders/service";
 import type {
@@ -30,7 +31,9 @@ import type {
   fileUploadLinkInput,
   fileUploadLinkOutput,
   listFolderOutput,
+  movedFileOutput,
   movedPageOutput,
+  moveOrRenameFileInput,
   moveOrRenamePageInput,
   renamedTabOutput,
   readFileInput,
@@ -923,6 +926,104 @@ export async function moveOrRenamePage(
           return invalidInput(moved.error.fieldErrors);
         case "name-taken":
           return nameTaken(options.folder.name, input.newTab, input.newName);
+        case "failed":
+          return toolError(WRITE_FAILED);
+      }
+    },
+    WRITE_FAILED,
+  );
+}
+
+/**
+ * The tool error of a change of a file based on another lock version than the stored one, or on no valid one: who
+ * changed the file last, how and when, where it is now, and that it has to be read again.
+ */
+function fileChanged(
+  options: WikiToolsOptions,
+  stored: fileService.StoredFile,
+  change: { nothing: string; base: string },
+): CallToolResult {
+  const { name, via } = stored.lastEditedBy;
+  return toolError(
+    `The file was changed by ${name} via ${via} at ${stored.updatedAt.toISOString()}, after the lockVersion this ` +
+      `${change.base} is based on, or the call states no valid lockVersion. ${change.nothing} The file is now ` +
+      `"${stored.name}" ${placeOf(options.folder.name, stored.tab?.name ?? null)}. Read it again with read_file and ` +
+      `base the ${change.base} on its current lockVersion.`,
+  );
+}
+
+/**
+ * The tool error of a new file name that the service refused: a name without the extension of the file's type names
+ * that extension, as the field error of the service does; any other states the rule of a file name.
+ */
+function invalidFileName(newName: string, type: FileType): CallToolResult {
+  if (!newName.endsWith(`.${FILE_TYPES[type].extension}`)) {
+    return toolError(`${asSentence(fileExtensionMessage(type))} Nothing was changed.`);
+  }
+  return toolError(
+    `The name "${newName}" is not a valid file name. A file name is ${FILE_NAME_RULE}. Nothing was changed.`,
+  );
+}
+
+/** The file as stored by `move_or_rename_file`, with the note first and the pages whose links it updated. */
+function movedFileData(options: WikiToolsOptions, file: fileService.MovedFile): z.infer<typeof movedFileOutput> {
+  const { folder } = options;
+  const tab = file.tab?.name ?? null;
+  return withNote({
+    name: file.name,
+    tab,
+    type: file.type,
+    address: addressOf(options, fileContentPath(folder.name, tab, file.name)),
+    detailsAddress: addressOf(options, filePath(folder.name, tab, file.name)),
+    // The tab and name as stored, so that after a move or rename the links name the new place.
+    wikiLink: wikiLinkOf({ tab, name: file.name }),
+    embedLink: isImageType(file.type) ? embedLinkOf({ tab, name: file.name }) : null,
+    lockVersion: file.lockVersion,
+    updatedPages: updatedPagesData(file.updatedPages),
+  });
+}
+
+/**
+ * The tool `move_or_rename_file`: a file of the folder of the connection, by its tab, if it is in one, and its name
+ * with its extension, to another tab of it, or directly into it, and with a new name that keeps its extension, based on
+ * the lock version. The links and embeds of the file in the pages of the folder follow in the same change.
+ */
+export async function moveOrRenameFile(
+  options: WikiToolsOptions,
+  input: z.infer<typeof moveOrRenameFileInput>,
+): Promise<CallToolResult> {
+  return run(
+    options,
+    "move_or_rename_file",
+    input,
+    async () => {
+      const tab = input.tab ?? null;
+      const file = await fileService.getFile(options.actor, options.folder.name, tab, input.file);
+      if (!file) return fileNotFound(options.folder.name, tab, input.file);
+      const place = await tabIdOf(options, input.newTab);
+      if (place.error) return place.error;
+      const moved = await fileService.moveOrRenameFile(options.actor, file.id, {
+        name: input.newName,
+        tabId: place.tabId,
+        lockVersion: input.lockVersion ?? null,
+      });
+      if (moved.ok) return result(movedFileData(options, moved.value));
+      switch (moved.error.code) {
+        case "not-allowed":
+          return toolError(NOT_ALLOWED);
+        case "file-not-found":
+          return fileNotFound(options.folder.name, tab, input.file);
+        case "file-changed":
+          return fileChanged(options, moved.error.file, { nothing: "Nothing was changed.", base: "move" });
+        case "tab-not-found":
+          return tabNotFound(options, input.newTab ?? "");
+        case "invalid-input":
+          return invalidFileName(input.newName, file.type);
+        case "name-taken":
+          return toolError(
+            `A file named "${input.newName}" already exists ${placeOf(options.folder.name, input.newTab)}, so ` +
+              "nothing was changed. Choose another name.",
+          );
         case "failed":
           return toolError(WRITE_FAILED);
       }

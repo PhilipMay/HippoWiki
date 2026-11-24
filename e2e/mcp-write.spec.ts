@@ -90,6 +90,7 @@ test.describe("the write tools", () => {
       "get_file_download_link",
       ...writeTools,
       "get_file_upload_link",
+      "move_or_rename_file",
     ]);
     expect(await listed(secret, address)).toEqual([
       "list_folder",

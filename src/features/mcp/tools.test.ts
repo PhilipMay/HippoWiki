@@ -34,6 +34,7 @@ const USER_TEXT_TOOLS = [
   "edit_page_content",
   "move_or_rename_page",
   "get_file_upload_link",
+  "move_or_rename_file",
   "delete_page",
   "rename_tab",
   "delete_tab",
@@ -61,6 +62,7 @@ const mocks = vi.hoisted(() => ({
   getFile: vi.fn(),
   getCurrentFileVersion: vi.fn(),
   checkUploadName: vi.fn(),
+  moveOrRenameFile: vi.fn(),
   getStore: vi.fn(),
   findLinkKey: vi.fn(),
   info: vi.fn(),
@@ -94,6 +96,7 @@ vi.mock("@/features/files/service", () => ({
   getFile: mocks.getFile,
   getCurrentFileVersion: mocks.getCurrentFileVersion,
   checkUploadName: mocks.checkUploadName,
+  moveOrRenameFile: mocks.moveOrRenameFile,
 }));
 // The links to files and the upload links are made by the real links services, with the key of the links from a
 // mocked database.
@@ -156,6 +159,20 @@ function fileWithPlace(name: string, tab: string | null) {
     tab: tab === null ? null : { id: "tab-1", name: tab },
     role: "reader",
     versions: [version(2, 4096), version(1, 2048)],
+  };
+}
+
+/** A file as a write of the files service stores it, as `moveOrRenameFile()` returns it without its pages. */
+function storedFileOf(name: string, tab: string | null) {
+  return {
+    id: `id-${name}`,
+    name,
+    type: name.endsWith(".pdf") ? "pdf" : "png",
+    lockVersion: 3,
+    updatedAt: CHANGED,
+    lastEditedBy: { name: "bob", via: "mcp" as const },
+    folder: { name: "handbook" },
+    tab: tab === null ? null : { name: tab },
   };
 }
 
@@ -1512,8 +1529,9 @@ describe("the write tools", () => {
       "edit_page_content",
       "move_or_rename_page",
       "get_file_upload_link",
+      "move_or_rename_file",
     ]);
-    const [create, replace, edit, move, upload] = tools.slice(5);
+    const [create, replace, edit, move, upload, moveFile] = tools.slice(5);
     expect(Object.keys(create?.inputSchema.properties ?? {})).toEqual(["content", "tab", "name"]);
     expect(create?.inputSchema.required).toEqual(["content"]);
     expect(Object.keys(replace?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version", "content"]);
@@ -1530,6 +1548,15 @@ describe("the write tools", () => {
       "removeMetadata",
     ]);
     expect(upload?.inputSchema.required).toEqual(["file", "size"]);
+    expect(Object.keys(moveFile?.inputSchema.properties ?? {})).toEqual([
+      "tab",
+      "file",
+      "lockVersion",
+      "newTab",
+      "newName",
+    ]);
+    expect(moveFile?.inputSchema.required).toEqual(["file", "newTab", "newName"]);
+    expect(moveFile?.inputSchema.properties?.newName?.description).toContain(LENGTH_LIMIT);
     expect(upload?.inputSchema.properties?.file?.description).toContain(LENGTH_LIMIT);
     expect(create?.inputSchema.properties?.name?.description).toContain(LENGTH_LIMIT);
     expect(move?.inputSchema.properties?.newName?.description).toContain(LENGTH_LIMIT);
@@ -1550,6 +1577,9 @@ describe("the write tools", () => {
       openWorldHint: false,
     });
     expect(upload?.annotations).toStrictEqual(create?.annotations);
+    // A move of a file keeps its versions and its content, so it carries the hints of move_or_rename_page.
+    expect(moveFile?.annotations).toStrictEqual(move?.annotations);
+    expect(moveFile?.annotations.destructiveHint).toBe(false);
   });
 
   it("are registered for a Manager connection as well, after the read tools", async () => {
@@ -1557,7 +1587,7 @@ describe("the write tools", () => {
 
     const answer = await send({ method: "tools/list" });
 
-    expect((answer.result?.tools as { name: string }[]).map((tool) => tool.name).slice(0, 10)).toEqual([
+    expect((answer.result?.tools as { name: string }[]).map((tool) => tool.name).slice(0, 11)).toEqual([
       "list_folder",
       "read_page",
       "search_pages",
@@ -1568,6 +1598,7 @@ describe("the write tools", () => {
       "edit_page_content",
       "move_or_rename_page",
       "get_file_upload_link",
+      "move_or_rename_file",
     ]);
   });
 
@@ -1587,6 +1618,13 @@ describe("the write tools", () => {
       method: "tools/call",
       params: { name: "get_file_upload_link", arguments: { file: "diagram.png", size: 100 } },
     });
+    const moveFile = await send({
+      method: "tools/call",
+      params: {
+        name: "move_or_rename_file",
+        arguments: { file: "diagram.png", lockVersion: 3, newTab: null, newName: "network.png" },
+      },
+    });
 
     expect((list.result?.tools as { name: string }[]).map((tool) => tool.name)).toEqual([
       "list_folder",
@@ -1598,8 +1636,11 @@ describe("the write tools", () => {
     expectToolNotFound(call, "create_page");
     expectToolNotFound(edit, "edit_page_content");
     expectToolNotFound(upload, "get_file_upload_link");
+    expectToolNotFound(moveFile, "move_or_rename_file");
     expect(mocks.getFolderByName).not.toHaveBeenCalled();
     expect(mocks.checkUploadName).not.toHaveBeenCalled();
+    expect(mocks.moveOrRenameFile).not.toHaveBeenCalled();
+    expect(mocks.getFile).not.toHaveBeenCalled();
     expect(mocks.findLinkKey).not.toHaveBeenCalled();
     expect(mocks.createPage).not.toHaveBeenCalled();
     expect(mocks.getPage).not.toHaveBeenCalled();
@@ -2094,6 +2135,195 @@ describe("the write tools", () => {
       ).toContain(message);
     });
   });
+
+  describe("move_or_rename_file", () => {
+    const FILE = fileWithPlace("diagram.png", "guides");
+    const MOVE = { tab: "guides", file: "diagram.png", lockVersion: 3, newTab: null, newName: "network.png" };
+
+    beforeEach(() => {
+      mocks.getFile.mockResolvedValue(FILE);
+      mocks.moveOrRenameFile.mockResolvedValue({
+        ok: true,
+        value: { ...storedFileOf("network.png", null), lockVersion: 4, updatedPages: [] },
+      });
+    });
+
+    it("moves the file found by its tab and name, based on the lock version, and returns it as stored with the pages whose links were updated", async () => {
+      mocks.moveOrRenameFile.mockResolvedValue({
+        ok: true,
+        value: {
+          ...storedFileOf("network.png", "archive"),
+          lockVersion: 4,
+          updatedPages: [
+            { id: "p2", name: "setup", title: "Setup", tab: null },
+            { id: "p3", name: "network", title: "Network", tab: { name: "guides" } },
+          ],
+        },
+      });
+
+      const result = await callTool("move_or_rename_file", { ...MOVE, newTab: "guides" });
+
+      expect(mocks.getFile).toHaveBeenCalledExactlyOnceWith(WRITER, "handbook", "guides", "diagram.png");
+      expect(mocks.moveOrRenameFile).toHaveBeenCalledExactlyOnceWith(WRITER, "id-diagram.png", {
+        name: "network.png",
+        tabId: "tab-1",
+        lockVersion: 3,
+      });
+      expect(result.isError).toBeFalsy();
+      expect(result.structuredContent).toEqual({
+        note: USER_TEXT_NOTE,
+        name: "network.png",
+        tab: "archive",
+        type: "png",
+        address: "https://wiki.example.com/files/handbook/archive/network.png",
+        detailsAddress: "https://wiki.example.com/folders/handbook/archive/network.png",
+        wikiLink: "[[archive/network.png]]",
+        embedLink: "![[archive/network.png]]",
+        lockVersion: 4,
+        updatedPages: [
+          { name: "setup", tab: null, title: "Setup" },
+          { name: "network", tab: "guides", title: "Network" },
+        ],
+      });
+      expect(Object.keys(JSON.parse(result.content[0]?.text ?? "") as object)[0]).toBe("note");
+    });
+
+    it("gives a PDF moved directly into the folder its wiki link and no embed link", async () => {
+      mocks.getFile.mockResolvedValue(fileWithPlace("manual.pdf", null));
+      mocks.moveOrRenameFile.mockResolvedValue({
+        ok: true,
+        value: { ...storedFileOf("guide.pdf", null), lockVersion: 4, updatedPages: [] },
+      });
+
+      const result = await callTool("move_or_rename_file", {
+        file: "manual.pdf",
+        lockVersion: 3,
+        newTab: null,
+        newName: "guide.pdf",
+      });
+
+      expect(mocks.getTab).not.toHaveBeenCalled();
+      expect(mocks.moveOrRenameFile).toHaveBeenCalledWith(WRITER, "id-manual.pdf", {
+        name: "guide.pdf",
+        tabId: null,
+        lockVersion: 3,
+      });
+      expect(result.structuredContent).toMatchObject({ wikiLink: "[[guide.pdf]]", embedLink: null, type: "pdf" });
+    });
+
+    // The service returns the file as stored when it changes nothing, so the lock version is the one that was sent.
+    it("answers a move to the current name and place with the file, the same lock version and no updated page", async () => {
+      mocks.moveOrRenameFile.mockResolvedValue({
+        ok: true,
+        value: { ...storedFileOf("diagram.png", "guides"), updatedPages: [] },
+      });
+
+      const result = await callTool("move_or_rename_file", { ...MOVE, newTab: "guides", newName: "diagram.png" });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.structuredContent).toMatchObject({
+        name: "diagram.png",
+        tab: "guides",
+        wikiLink: "[[guides/diagram.png]]",
+        lockVersion: 3,
+        updatedPages: [],
+      });
+    });
+
+    it("answers a file that does not exist, is deleted or is a page with a tool error that points to list_folder, and changes nothing", async () => {
+      mocks.getFile.mockResolvedValue(null);
+
+      const message = errorOf(await callTool("move_or_rename_file", { ...MOVE, file: "setup" }));
+
+      expect(message).toContain('There is no file named "setup" in the tab "guides" of the folder "handbook"');
+      expect(message).toContain("Use list_folder");
+      expect(mocks.moveOrRenameFile).not.toHaveBeenCalled();
+    });
+
+    it("passes no lock version on as null, which the service refuses as changed, and says who changed the file and where it is now", async () => {
+      mocks.moveOrRenameFile.mockResolvedValue({
+        ok: false,
+        error: { code: "file-changed", file: { ...storedFileOf("renamed.png", null), lockVersion: 5 } },
+      });
+
+      const message = errorOf(await callTool("move_or_rename_file", { ...MOVE, lockVersion: undefined }));
+
+      expect(mocks.moveOrRenameFile).toHaveBeenCalledWith(WRITER, "id-diagram.png", {
+        name: "network.png",
+        tabId: null,
+        lockVersion: null,
+      });
+      expect(message).toContain("The file was changed by bob via mcp at 2026-03-01T12:00:00.000Z");
+      expect(message).toContain("Nothing was changed.");
+      expect(message).toContain('The file is now "renamed.png" directly in the folder "handbook"');
+      expect(message).toContain("Read it again with read_file and base the move on its current lockVersion.");
+    });
+
+    it.each([
+      ["setup.jpg", "The name must end in .png, because the type of a file cannot change. Nothing was changed."],
+      ["setup", "The name must end in .png, because the type of a file cannot change. Nothing was changed."],
+      ["Setup.png", "is not a valid file name. A file name is lowercase letters, digits and single hyphens"],
+    ])("answers the new name %s that the service refuses with what to do", async (newName, message) => {
+      mocks.moveOrRenameFile.mockResolvedValue({
+        ok: false,
+        error: { code: "invalid-input", fieldErrors: { name: ["The service's message"] } },
+      });
+
+      expect(errorOf(await callTool("move_or_rename_file", { ...MOVE, newName }))).toContain(message);
+    });
+
+    it("states the whole rule of a file name for a name that breaks it", async () => {
+      mocks.moveOrRenameFile.mockResolvedValue({ ok: false, error: { code: "invalid-input", fieldErrors: {} } });
+
+      const message = errorOf(await callTool("move_or_rename_file", { ...MOVE, newName: "Setup.png" }));
+
+      expect(message).toContain(LENGTH_LIMIT);
+      expect(message).toContain("then the extension of its type: png, jpg, gif, webp, pdf");
+    });
+
+    it.each([
+      [{ code: "not-allowed" }, NOT_ALLOWED],
+      [{ code: "file-not-found" }, 'There is no file named "diagram.png" in the tab "guides"'],
+      [{ code: "tab-not-found" }, 'There is no tab named "archive" in the folder "handbook", so nothing was changed.'],
+      [
+        { code: "name-taken" },
+        'A file named "network.png" already exists in the tab "archive" of the folder "handbook", so nothing was ' +
+          "changed. Choose another name.",
+      ],
+      [{ code: "failed" }, "The change could not be stored. Please try again later."],
+    ])("maps the error %j to a tool error", async (error, message) => {
+      mocks.moveOrRenameFile.mockResolvedValue({ ok: false, error });
+
+      expect(errorOf(await callTool("move_or_rename_file", { ...MOVE, newTab: "archive" }))).toContain(message);
+    });
+
+    it("answers an unknown target tab by the role: create_tab for a Manager connection, the browser for a Writer", async () => {
+      mocks.getTab.mockResolvedValue(null);
+
+      const writer = errorOf(await callTool("move_or_rename_file", { ...MOVE, newTab: "archive" }));
+      actor = MANAGER;
+      const manager = errorOf(await callTool("move_or_rename_file", { ...MOVE, newTab: "archive" }));
+
+      expect(writer).toContain('There is no tab named "archive"');
+      expect(writer).toContain("tabs are created in the browser");
+      expect(manager).toContain("create the tab with create_tab");
+      expect(mocks.moveOrRenameFile).not.toHaveBeenCalled();
+    });
+
+    it("logs one line with the old and the new file names and the outcome, and no lock version", async () => {
+      await callTool("move_or_rename_file", MOVE);
+
+      expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          tool: "move_or_rename_file",
+          names: { tab: "guides", file: "diagram.png", newTab: null, newName: "network.png" },
+          outcome: "worked",
+        }),
+        "mcp tool called",
+      );
+      expect(JSON.stringify(mocks.info.mock.calls)).not.toContain("lockVersion");
+    });
+  });
 });
 
 describe("the tools of a Manager connection", () => {
@@ -2142,7 +2372,7 @@ describe("the tools of a Manager connection", () => {
   it("are registered for a Manager connection after the write tools, with inputs, output schemas and hints", async () => {
     const tools = await listedTools();
 
-    expect(tools.map((tool) => tool.name).slice(10)).toEqual(MANAGER_TOOLS);
+    expect(tools.map((tool) => tool.name).slice(11)).toEqual(MANAGER_TOOLS);
     const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]));
     expect(Object.keys(byName.delete_page?.inputSchema.properties ?? {})).toEqual(["tab", "page", "version"]);
     expect(byName.delete_page?.inputSchema.required).toEqual(["page"]);
@@ -2169,8 +2399,8 @@ describe("the tools of a Manager connection", () => {
   });
 
   it.each([
-    ["Manager", 14, MANAGER],
-    ["Writer", 10, WRITER],
+    ["Manager", 15, MANAGER],
+    ["Writer", 11, WRITER],
     ["Reader", 5, READER],
   ])("give a %s connection %i tools", async (_role, count, other) => {
     actor = other;
@@ -2459,6 +2689,7 @@ describe("the tools of each role", () => {
     ["edit_page_content", "editPage"],
     ["move_or_rename_page", "moveOrRenamePage"],
     ["get_file_upload_link", "editFile"],
+    ["move_or_rename_file", "editFile"],
     ["delete_page", "deletePage"],
     ["create_tab", "editTab"],
     ["rename_tab", "editTab"],
@@ -2476,7 +2707,7 @@ describe("the tools of each role", () => {
   });
 
   it.each(MCP_ROLES)(
-    "of a %s connection include none that moves, renames, reverts or deletes a single file, and one that uploads only where the role may upload",
+    "of a %s connection include none that reverts a single file, and those that upload, move and rename one only where the role may",
     async (role) => {
       actor = { ...READER, connection: { ...READER.connection, role } };
 
@@ -2486,22 +2717,23 @@ describe("the tools of each role", () => {
         annotations: Record<string, boolean>;
       }[];
 
-      // Two tools that take a file only read it, get_file_upload_link only adds a file or a version, and delete_tab
-      // deletes files only together with their tab.
-      const uploads = mayDo(role, "editFile") ? ["get_file_upload_link"] : [];
+      // Two tools that take a file only read it, get_file_upload_link only adds a file or a version, and
+      // move_or_rename_file keeps its versions; none destroys anything.
+      const writes = mayDo(role, "editFile") ? ["get_file_upload_link", "move_or_rename_file"] : [];
       const withFile = tools.filter((tool) => Object.keys(tool.inputSchema.properties ?? {}).includes("file"));
-      expect(withFile.map((tool) => tool.name)).toEqual(["read_file", "get_file_download_link", ...uploads]);
+      expect(withFile.map((tool) => tool.name)).toEqual(["read_file", "get_file_download_link", ...writes]);
       for (const tool of withFile) {
         expect(tool.annotations).toMatchObject({
-          readOnlyHint: tool.name !== "get_file_upload_link",
+          readOnlyHint: !writes.includes(tool.name),
           destructiveHint: false,
         });
       }
       expect(tools.filter((tool) => /file|upload/u.test(tool.name)).map((tool) => tool.name)).toEqual([
         "read_file",
         "get_file_download_link",
-        ...uploads,
+        ...writes,
       ]);
+      expect(tools.map((tool) => tool.name).filter((name) => /revert/u.test(name))).toEqual([]);
     },
   );
 });
@@ -2654,7 +2886,7 @@ describe("the hint on the addresses", () => {
 
   it("ends the description of every address field of every tool of a Manager connection, after what it says of its item", async () => {
     const schemas = await outputSchemas();
-    expect(schemas.size).toBe(14);
+    expect(schemas.size).toBe(15);
 
     const addresses = [...schemas].flatMap(([tool, schema]) =>
       fieldsOf(schema)
@@ -2827,6 +3059,12 @@ describe("a name of an existing tab or page", () => {
       "tab",
       (name) => `There is no tab named "${name}"`,
     ],
+    [
+      "move_or_rename_file",
+      (name) => ({ file: "diagram.png", lockVersion: 3, newTab: name, newName: "network.png" }),
+      "tab",
+      (name) => `There is no tab named "${name}"`,
+    ],
   ];
 
   beforeEach(() => {
@@ -2835,6 +3073,7 @@ describe("a name of an existing tab or page", () => {
     mocks.getFolderByName.mockResolvedValue({ ...FOLDER, role: "manager" });
     mocks.getPage.mockResolvedValue(PAGE);
     mocks.getTab.mockResolvedValue({ id: "tab-1", name: "guides", folder: FOLDER, role: "manager" });
+    mocks.getFile.mockResolvedValue(fileWithPlace("diagram.png", null));
   });
 
   it.each(
@@ -2855,6 +3094,7 @@ describe("a name of an existing tab or page", () => {
         mocks.deletePage,
         mocks.renameTab,
         mocks.deleteTab,
+        mocks.moveOrRenameFile,
       ]) {
         expect(write).not.toHaveBeenCalled();
       }
@@ -2878,12 +3118,13 @@ describe("every tool", () => {
   const STORED = { id: "p1", name: "setup", title: "Setup", version: 5, folder: { name: "handbook" }, tab: null };
   const TAB = { id: "tab-1", name: "guides", folder: FOLDER, role: "manager" };
   const FILE = fileWithPlace("diagram.png", null);
+  const STORED_FILE = storedFileOf("diagram.png", null);
   const READ_FAILED = "The wiki could not be read. Please try again later.";
   const WRITE_FAILED = "The change could not be stored. Please try again later.";
   const UPLOAD_LINK_FAILED = "The upload link could not be made. Please try again later.";
 
   /**
-   * Each of the fourteen tools, called by a Manager connection, which has all of them: its arguments, the service it
+   * Each of the fifteen tools, called by a Manager connection, which has all of them: its arguments, the service it
    * calls, and the message of a failure of that service.
    */
   const TOOLS = [
@@ -2912,6 +3153,12 @@ describe("every tool", () => {
       WRITE_FAILED,
     ],
     ["get_file_upload_link", { file: "diagram.png", size: 100 }, mocks.checkUploadName, UPLOAD_LINK_FAILED],
+    [
+      "move_or_rename_file",
+      { file: "diagram.png", lockVersion: 3, newTab: null, newName: "network.png" },
+      mocks.moveOrRenameFile,
+      WRITE_FAILED,
+    ],
     ["delete_page", { page: "setup", version: 4 }, mocks.deletePage, WRITE_FAILED],
     ["create_tab", { name: "news" }, mocks.createTab, WRITE_FAILED],
     ["rename_tab", { tab: "guides", newName: "news" }, mocks.renameTab, WRITE_FAILED],
@@ -2931,6 +3178,7 @@ describe("every tool", () => {
     edit_page_content: { page: "setup" },
     move_or_rename_page: { page: "setup", newTab: null, newName: "moved" },
     get_file_upload_link: { file: "diagram.png" },
+    move_or_rename_file: { file: "diagram.png", newTab: null, newName: "network.png" },
     delete_page: { page: "setup" },
     create_tab: { name: "news" },
     rename_tab: { tab: "guides", newName: "news" },
@@ -2962,6 +3210,10 @@ describe("every tool", () => {
     mocks.createPage.mockResolvedValue({ ok: true, value: { ...STORED, name: "new", version: 1 } });
     mocks.updatePageContent.mockResolvedValue({ ok: true, value: STORED });
     mocks.moveOrRenamePage.mockResolvedValue({ ok: true, value: { ...STORED, name: "moved", updatedPages: [] } });
+    mocks.moveOrRenameFile.mockResolvedValue({
+      ok: true,
+      value: { ...STORED_FILE, name: "network.png", lockVersion: 4, updatedPages: [] },
+    });
     mocks.deletePage.mockResolvedValue({ ok: true, value: { folder: { name: "handbook" }, tab: null } });
     mocks.createTab.mockResolvedValue({ ok: true, value: { id: "t2", name: "news", folder: { name: "handbook" } } });
     mocks.renameTab.mockResolvedValue({

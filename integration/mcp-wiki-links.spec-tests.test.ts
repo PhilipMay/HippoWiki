@@ -95,6 +95,7 @@ async function callEveryTool(): Promise<[string, Record<string, unknown>][]> {
   });
   await createFile({ tab: guides, name: "diagram.png", editor: user });
   await createFile({ folder: handbook, name: "manual.pdf", editor: user });
+  const scan = await createFile({ folder: handbook, name: "scan.pdf", editor: user });
 
   const results: [string, Record<string, unknown>][] = [];
   const record = async (name: string, args: Record<string, unknown> = {}) => {
@@ -110,6 +111,12 @@ async function callEveryTool(): Promise<[string, Record<string, unknown>][]> {
   await record("read_file", { file: "manual.pdf" });
   await record("get_file_download_link", { tab: "guides", file: "diagram.png" });
   await record("get_file_upload_link", { tab: "guides", file: "screenshot.png", size: 100 });
+  await record("move_or_rename_file", {
+    file: "scan.pdf",
+    lockVersion: scan.lockVersion,
+    newTab: "guides",
+    newName: "network-manual.pdf",
+  });
   await record("search_pages", { query: "install" });
   await record("search_pages", { query: "overview" });
   await record("search_pages", { query: "diagram" });

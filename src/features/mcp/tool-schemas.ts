@@ -91,6 +91,39 @@ export const readFileInput = z.object({
   file: z.string().describe("The name of the file with its extension, such as diagram.png, as list_folder returns it"),
 });
 
+/** The lock version of a file that a change of the file is based on, as a plain number (see `fileUploadLinkInput`). */
+function fileLockVersionArgument(change: string) {
+  return z
+    .number()
+    .optional()
+    .describe(
+      `The lockVersion that read_file or list_folder gave for the file; the ${change} is refused if the file has ` +
+        "changed since",
+    );
+}
+
+/**
+ * What `move_or_rename_file` takes: the file by its tab and name, the lock version the move is based on, and the new
+ * tab and name. The lock version is a plain optional number, so that a call without it is the tool error of a changed
+ * file and not an error of the schema. No argument names a folder: the folder is the one of the connection.
+ */
+export const moveOrRenameFileInput = z.object({
+  ...readFileInput.shape,
+  lockVersion: fileLockVersionArgument("move"),
+  newTab: z
+    .string()
+    .nullable()
+    .describe(
+      "The name of an existing tab of the folder to move the file to, or null to place it directly in the folder",
+    ),
+  newName: z
+    .string()
+    .describe(
+      `The new name of the file with the extension of its type, which cannot change, such as diagram.png: ` +
+        `${NAME_RULE} before the dot. Pass the old name to keep it.`,
+    ),
+});
+
 /**
  * What `get_file_upload_link` takes: the place and the name of the file, its exact size, the lock version of the file
  * that a new version is based on, and the choice of the metadata. The numbers are plain numbers, so that a size the
@@ -529,6 +562,28 @@ export const updatedPagesOutput = z
     "The pages of the folder whose wiki links to the old name and place were changed to the new one, each with a new " +
       "version; a page that links to itself is among them",
   );
+
+/**
+ * The file as stored by `move_or_rename_file`, with the note first, its place, addresses, links and lock version as
+ * `read_file` describes them, and the pages whose wiki links and embeds of it were updated.
+ */
+export const movedFileOutput = z.object({
+  note: NOTE_OUTPUT,
+  ...fileOutput.pick({
+    name: true,
+    tab: true,
+    type: true,
+    address: true,
+    detailsAddress: true,
+    wikiLink: true,
+    embedLink: true,
+    lockVersion: true,
+  }).shape,
+  updatedPages: updatedPagesOutput.describe(
+    "The pages of the folder whose wiki links and embeds of the file were changed to its new name and place, each " +
+      "with a new version",
+  ),
+});
 
 /** The page as stored by `move_or_rename_page`, with the pages whose wiki links it updated. */
 export const movedPageOutput = storedPageOutput.extend({ updatedPages: updatedPagesOutput });

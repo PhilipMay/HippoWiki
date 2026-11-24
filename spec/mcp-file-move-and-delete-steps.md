@@ -21,7 +21,7 @@ does in the browser: a Writer and a Manager connection with `move_or_rename_file
 ## Checklist
 
 - [x] File services for MCP actors
-- [ ] Tool `move_or_rename_file`
+- [x] Tool `move_or_rename_file`
 - [ ] Tool `delete_file`
 - [ ] Instructions and descriptions
 - [ ] Spec tests
@@ -137,7 +137,8 @@ folder, or directly into the folder, and rename it, in one call (R1 to R7, R11, 
   - After a move through MCP the details page of the file shows the last change "by <user> via mcp" (R11).
 - The tests that count or list the tools of a connection, in `src/features/mcp/tools.test.ts`,
   `e2e/mcp-write.spec.ts` and `e2e/mcp-manager.spec.ts`, have eleven tools for a Writer and fifteen for a Manager
-  connection after this step.
+  connection after this step; `integration/mcp-wiki-links.spec-tests.test.ts`, which calls every tool of a Manager
+  connection, calls the new tool as well.
 - End-to-end specs: `e2e/mcp-files.spec.ts`, `e2e/mcp-write.spec.ts`, `e2e/mcp-manager.spec.ts`,
   `e2e/mcp-read.spec.ts`, `e2e/mcp-access.spec.ts` and `e2e/mcp-attachments-spec-tests.spec.ts`.
 

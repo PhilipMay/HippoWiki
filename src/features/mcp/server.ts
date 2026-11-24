@@ -21,6 +21,8 @@ import {
   fileUploadLinkInput,
   fileUploadLinkOutput,
   listFolderOutput,
+  movedFileOutput,
+  moveOrRenameFileInput,
   moveOrRenamePageInput,
   NAME_RULE,
   readFileInput,
@@ -46,6 +48,7 @@ import {
   getFileDownloadLink,
   getFileUploadLink,
   listFolder,
+  moveOrRenameFile,
   moveOrRenamePage,
   readFile,
   readPage,
@@ -353,6 +356,25 @@ export function createWikiServer(options: WikiToolsOptions): McpServer {
         annotations: WRITES,
       },
       (input) => getFileUploadLink(options, input),
+    );
+
+    server.registerTool(
+      "move_or_rename_file",
+      {
+        title: "Move or rename a file",
+        description:
+          "Moves a file (an image or a PDF) of the folder of this connection to another existing tab of the folder, " +
+          "or directly into the folder, and gives it a new name, which changes its addresses. The new name keeps the " +
+          "extension of the file's type, such as diagram.png. State the lockVersion that read_file or list_folder " +
+          "gave: if the file has changed since, nothing is changed. A move to the current name and place changes " +
+          "nothing. The wiki links and embeds of the file in every page of the folder are changed to its new name and " +
+          "place in the same change. Returns the file with its new addresses, links and lockVersion, and the pages " +
+          `whose links were updated. ${USER_TEXT_NOTE}`,
+        inputSchema: moveOrRenameFileInput,
+        outputSchema: movedFileOutput,
+        annotations: WRITES,
+      },
+      (input) => moveOrRenameFile(options, input),
     );
   }
 
